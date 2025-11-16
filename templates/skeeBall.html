@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Claw Machine</title>
+<style>
+    body {
+        position: relative;
+        background: radial-gradient(circle at 50% 30%, #111111 0%, #000000 60%, #000f15 100%);
+        background-attachment: fixed;
+        color: #ddd;
+        font-family: monospace;
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+    }
+
+    body::before {
+        content: "";
+        position: absolute;
+        inset: -20%;
+        background: radial-gradient(circle at 50% 60%, #00ffff44, #ff00ff33, transparent 70%);
+        animation: neonPulse 6s ease-in-out infinite;
+        z-index: -1;
+        pointer-events: none;
+    }
+
+    @keyframes neonPulse {
+        0% {
+            opacity: 0.3;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 0.8;
+            transform: scale(1.1);
+        }
+        100% {
+            opacity: 0.3;
+            transform: scale(1);
+        }
+    }
+
+    h1 {
+        font-size: 20px;
+        letter-spacing: 4px;
+        color: rgb(177, 255, 255);
+        text-shadow:
+            0 0 8px rgb(68, 249, 255),
+            0 0 20px rgb(58, 255, 255),
+            0 0 40px rgb(33, 255, 255),
+            0 0 80px rgb(0, 123, 255);
+        animation: flicker 5.5s infinite;
+        margin-bottom: 16px;
+    }
+
+    @keyframes flicker {
+        0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+        20%, 24%, 55% { opacity: 0.6; }
+    }
+
+    canvas{
+        display:block;
+        margin:24px auto;
+        border:1px solid #8feeff;
+        background: #111;
+        width:640px;
+        height:480px;
+        image-rendering:pixelated;
+    }
+
+    .buttons {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 16px;
+    }
+
+    .btn {
+        display: inline-block;
+        background: #222;
+        color: #fff;
+        border: 1px solid rgb(58, 255, 255);
+        border-radius: 8px;
+        padding: 14px 28px;
+        text-decoration: none;
+        font-size: 16px;
+        transition: background 0.4s, color 0.2s, box-shadow 0.2s, transform 0.2s;
+    }
+
+    .btn:hover {
+        background: rgb(58, 255, 255);
+        color: #111;
+        box-shadow: 0 0 12px rgb(58, 255, 255);
+        border: 1px solid rgb(177, 255, 255);
+        transform: scale(1.05);
+    }
+
+    .controlsWrapper {
+        display: flex;
+        justify-content: center;
+        align-items: center; 
+        gap: 60px;               
+    }
+
+    .controls {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .lowerControls {
+      display: grid;
+      grid-template-columns: 44px 44px 44px;
+      grid-template-rows: 44px 44px 44px;
+      gap: 10px;
+      align-items: center;
+      justify-items: center;
+      margin-top: 12px;
+    }
+
+    #btnForward {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    #btnLeft {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    #btnRight {
+      grid-column: 3;
+      grid-row: 2;
+    }
+
+    #btnBackward {
+      grid-column: 2;
+      grid-row: 3;
+    }
+
+    #video{
+        position:fixed;
+        left:0;
+        top:0;
+        width:2px;
+        height:2px;
+        opacity:0.01;
+        pointer-events:none;
+    }
+</style>
+
+</head>
+<body>
+    <h1>🎱👻 Skee Ball: Roll Into Radiance 👻🎱</h1>
+    <canvas id="glcanvas" width="640" height="480"></canvas>
+
+    <div class="controlsWrapper">
+        <div class="controls">
+            <button id="btnReset" class="btn">Reset</button>
+            <a id="btnBack" class="btn" href="{{ url_for('home') }}">Home</a>
+        </div>
+        <div class="controls">
+            <button id="btnSpin" class="btn">Auto-Spin: Off</button>
+            <button id="btnDrop" class="btn">Throw Ball</button>
+        </div>
+
+        <div class="lowerControls" aria-label="Movement controls">
+            <button id="btnForward" class="btn btn-pad" aria-label="Move forward">
+                <span class="arrow">Faster</span>
+            </button>
+
+            <button id="btnLeft" class="btn btn-pad" aria-label="Move left">
+                <span class="arrow">◀</span>
+            </button>
+
+            <button id="btnRight" class="btn btn-pad" aria-label="Move right">
+                <span class="arrow">▶</span>
+            </button>
+
+            <button id="btnBackward" class="btn btn-pad" aria-label="Move back">
+                <span class="arrow">Slower</span>
+            </button>
+        </div>
+    </div>
+
+    <video id="video" src="{{ video_url }}?v={{ cache_bust }}" autoplay loop muted playsinline></video>
+
+    <script src="{{ url_for('static', filename='transformations.js') }}"></script>
+    <script src="{{ url_for('static', filename='primitives.js') }}"></script>
+    
+</body>
+</html>

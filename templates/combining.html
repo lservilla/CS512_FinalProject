@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>Claw Game with Textured Teddy</title>
+  <style>
+    body {
+      background: #111;
+      color: #ccc;
+      font-family: monospace;
+    }
+
+    textarea {
+      background: #222;
+      color: rgb(0, 162, 255);
+      font: 14px monospace;
+      width: 40px;
+      height: 20px;
+    }
+
+    canvas {
+      border: 1px solid #444;
+    }
+
+    .viewer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .controls {
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .controls .btn {
+      background: #222;
+      color: #e2e2e2;
+      border: 1px solid #396098;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: monospace;
+      margin: 5px;
+    }
+
+    .controls .btn:hover {
+      background: #3b7dbf;
+    }
+
+    .lowerControls {
+      display: grid;
+      grid-template-columns: 44px 44px 44px;
+      grid-template-rows: 44px 44px 44px;
+      gap: 10px;
+      align-items: center;
+      justify-items: center;
+      margin-top: 12px;
+    }
+
+    .btn-pad {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      border: 1px solid #396098;
+      background: radial-gradient(circle at 30% 30%, #2a2f3a 0%, #1f2430 70%);
+      color: #e2e2e2;
+      font: 700 16px/1 monospace;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(255, 255, 255, .05);
+      transition: transform .06s ease, box-shadow .06s ease, filter .06s ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .btn-pad:hover {
+      filter: brightness(1.1);
+    }
+
+    .btn-pad:active {
+      transform: translateY(1px) scale(0.98);
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, .6);
+    }
+
+    .btn-pad .arrow {
+      font-size: 18px;
+      pointer-events: none;
+    }
+
+    #btnForward {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    #btnLeft {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    #btnRight {
+      grid-column: 3;
+      grid-row: 2;
+    }
+
+    #btnBackward {
+      grid-column: 2;
+      grid-row: 3;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Claw Game: Try your luck</h2>
+
+  <div style="display: flex; gap: 10px; align-items: flex-start;">
+    <div style="display: flex; flex-direction: column; gap: 10px; visibility:hidden; height:0; overflow:hidden;">
+      <div>
+        <textarea id="vertEditor"></textarea>
+      </div>
+      <div>
+        <textarea id="fragEditor"></textarea>
+      </div>
+    </div>
+
+    <div class="viewer">
+      <canvas id="glcanvas" width="600" height="500"></canvas>
+      <div class="controls">
+        <button id="btnReset" class="btn">Reset</button>
+        <button id="btnSpin" class="btn">Auto-Spin: Off</button>
+        <button id="btnDrop" class="btn">Drop Claw</button>
+      </div>
+      <div class="lowerControls" aria-label="Movement controls">
+        <button id="btnForward" class="btn btn-pad" aria-label="Move forward">
+          <span class="arrow">▲</span>
+        </button>
+
+        <button id="btnLeft" class="btn btn-pad" aria-label="Move left">
+          <span class="arrow">◀</span>
+        </button>
+
+        <button id="btnRight" class="btn btn-pad" aria-label="Move right">
+          <span class="arrow">▶</span>
+        </button>
+
+        <button id="btnBackward" class="btn btn-pad" aria-label="Move back">
+          <span class="arrow">▼</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vertex shader (WebGL2) -->
+  <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
+    in vec3 aPosition;
+    in vec3 aColor;
+    in vec3 aNormal;
+    in vec2 aUV;
+
+    uniform mat4 uModelViewMatrix;
+    uniform mat4 uProjectionMatrix;
+    uniform mat4 uModelTransformationMatrix;
+    uniform mat3 uNormalMatrix;
+
+    out vec3 vColor;
+    out vec3 vPosVS;
+    out vec3 vNormalVS;
+    out vec2 vUV;
+
+    void main() {
+      mat4 MV = uModelViewMatrix * uModelTransformationMatrix;
+      vec4 posVS = MV * vec4(aPosition, 1.0);
+      gl_Position = uProjectionMatrix * posVS;
+
+      vColor    = aColor;
+      vPosVS    = posVS.xyz;
+      vNormalVS = normalize(uNormalMatrix * aNormal);
+      vUV       = aUV;
+    }
+  </script>
+
+  <!-- Fragment Shader (WebGL2) -->
+  <script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
+    precision mediump float;
+
+    in vec3 vColor;
+    in vec3 vPosVS;
+    in vec3 vNormalVS;
+    in vec2 vUV;
+
+    uniform vec3  uLightDirVS;  
+    uniform float uAmbient;        
+    uniform float uSpecPower;      
+    uniform float uSpecStrength;  
+
+    uniform float uDepthNear;  
+    uniform float uDepthFar;   
+    uniform float uDepthMin;
+
+    uniform sampler2D uTex;
+    uniform bool      uUseTexture;
+
+    out vec4 fragColor;
+
+    void main() {
+      vec3 N = normalize(vNormalVS);
+      vec3 L = normalize(-uLightDirVS);
+      float NdotL = max(dot(N, L), 0.0);
+
+      vec3 V = normalize(-vPosVS);
+      vec3 H = normalize(L + V);
+      float spec = pow(max(dot(N, H), 0.0), uSpecPower);
+
+      vec3 baseColor = vColor;
+      if (uUseTexture) {
+        baseColor = texture(uTex, vUV).rgb;
+      }
+
+      vec3 lit = baseColor * (uAmbient + NdotL) + vec3(spec) * uSpecStrength;
+
+      float d = length(vPosVS);                           
+      float t = clamp((d - uDepthNear) / (uDepthFar - uDepthNear), 0.0, 1.0);
+      t = smoothstep(0.0, 1.0, t);                       
+      float depthShade = mix(1.0, uDepthMin, t);          
+      vec3 finalColor = lit * depthShade;
+
+      fragColor = vec4(finalColor, 1.0);
+    }
+  </script>
+
+  <!-- your math / primitive libraries -->
+  <script src="{{ url_for('static', filename='transformations.js') }}"></script>
+  <script src="{{ url_for('static', filename='primitives.js') }}"></script>
+
+  <script>
+    function createShader(gl, type, source) {
+      let shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(shader));
+      }
+      return shader;
+    }
+
+    function createProgram(gl, vsSource, fsSource) {
+      let vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+      let fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+      let prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(prog));
+      }
+      return prog;
+    }
+
+    // WebGL setup
+    const canvas = document.getElementById("glcanvas");
+    const gl = canvas.getContext("webgl2");
+    if (!gl) alert("WebGL2 not supported");
+
+    let vertEditor = document.getElementById("vertEditor");
+    let fragEditor = document.getElementById("fragEditor");
+    vertEditor.value = document.getElementById("vertex-shader").textContent;
+    fragEditor.value = document.getElementById("fragment-shader").textContent;
+
+    let program;
+    let posLoc, colorLoc, normalLoc, aUVLoc;
+    let uMVM, uPM, uMTM, uNormalMatrix;
+    let uLightDirVS, uAmbient, uSpecPower, uSpecStrength;
+    let uDepthNearLoc, uDepthFarLoc, uDepthMinLoc;
+    let uTexLoc, uUseTextureLoc;
+    let timeLoc;
+
+    // Buffers for block
+    let vbo, nbo, ibo, indexCount, cbo;
+
+    // Buffers for cylinder
+    let cylVbo, cylNbo, cylIbo, cylIndexCount, cylCbo;
+
+    // Buffers for cone
+    let coneVbo, coneNbo, coneIbo, coneIndexCount, coneCbo;
+
+    // Buffers for spheres
+    let sphVbo, sphNbo, sphIbo, sphIndexCount, sphCbo;
+    let sphereSets = [];
+
+    const spherePalette = [
+      [1.0, 0.0, 0.0],
+      [1.0, 0.529, 0.0],
+      [1.0, 0.83, 0.0],
+      [0.871, 1.0, 0.039],
+      [0.631, 1.0, 0.039],
+      [0.039, 1.0, 0.6],
+      [0.039, 0.937, 1.0],
+      [0.078, 0.49, 0.961],
+      [0.345, 0.039, 1.0],
+      [0.745, 0.039, 1.0]
+    ];
+
+    const randColorPalette = [];
+    const randJitterZ = [];
+    const randJitterX = [];
+    for (let i = 0; i < 109; i++) {
+      randColorPalette.push(Math.floor(Math.random() * 10));
+      randJitterZ.push((Math.floor(Math.random() * 98) - 60) * 0.01);
+      randJitterX.push((Math.floor(Math.random() * 98) - 60) * 0.01);
+    }
+
+    function computeSphericalUVs(positions) {
+      const n = positions.length / 3;
+      const uvs = new Float32Array(n * 2);
+      for (let i = 0; i < n; i++) {
+        const x = positions[i * 3 + 0];
+        const y = positions[i * 3 + 1];
+        const z = positions[i * 3 + 2];
+        const r = Math.sqrt(x * x + y * y + z * z) || 1.0;
+        const nx = x / r, ny = y / r, nz = z / r;
+
+        const u = 0.5 + Math.atan2(nz, nx) / (2.0 * Math.PI);
+        const v = 0.5 - Math.asin(ny) / Math.PI;
+
+        uvs[i * 2 + 0] = u;
+        uvs[i * 2 + 1] = v;
+      }
+      return uvs;
+    }
+
+    function initShaderProgram() {
+      try {
+        program = createProgram(
+          gl,
+          document.getElementById("vertex-shader").textContent,
+          document.getElementById("fragment-shader").textContent
+        );
+        gl.useProgram(program);
+
+        posLoc = gl.getAttribLocation(program, "aPosition");
+        colorLoc = gl.getAttribLocation(program, "aColor");
+        normalLoc = gl.getAttribLocation(program, "aNormal");
+        aUVLoc = gl.getAttribLocation(program, "aUV");
+
+        timeLoc = gl.getUniformLocation(program, "uTime"); // may be null
+
+        uMVM = gl.getUniformLocation(program, "uModelViewMatrix");
+        uPM = gl.getUniformLocation(program, "uProjectionMatrix");
+        uMTM = gl.getUniformLocation(program, "uModelTransformationMatrix");
+        uNormalMatrix = gl.getUniformLocation(program, "uNormalMatrix");
+
+        uLightDirVS = gl.getUniformLocation(program, "uLightDirVS");
+        uAmbient = gl.getUniformLocation(program, "uAmbient");
+        uSpecPower = gl.getUniformLocation(program, "uSpecPower");
+        uSpecStrength = gl.getUniformLocation(program, "uSpecStrength");
+
+        uDepthNearLoc = gl.getUniformLocation(program, "uDepthNear");
+        uDepthFarLoc = gl.getUniformLocation(program, "uDepthFar");
+        uDepthMinLoc = gl.getUniformLocation(program, "uDepthMin");
+
+        uTexLoc = gl.getUniformLocation(program, "uTex");
+        uUseTextureLoc = gl.getUniformLocation(program, "uUseTexture");
+
+        gl.useProgram(program);
+        gl.uniform3f(uLightDirVS, 0.3, -0.9, 0.4);
+        gl.uniform1f(uAmbient, 0.55);
+        gl.uniform1f(uSpecPower, 42.0);
+        gl.uniform1f(uSpecStrength, 0.65);
+
+        gl.uniform1f(uDepthNearLoc, 15.0);
+        gl.uniform1f(uDepthFarLoc, 120.0);
+        gl.uniform1f(uDepthMinLoc, 0.35);
+
+        if (uTexLoc) gl.uniform1i(uTexLoc, 0);
+        if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    initShaderProgram();
+
+    // --------- GL state ----------
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    // leave cull face off so the top doesn't disappear
+
+    // --------- Block (cube) buffers ----------
+    function initBlockBuffers() {
+      const rec = buildBlock(1, 1, 1);
+      indexCount = rec.indices.length;
+
+      vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, rec.positions, gl.STATIC_DRAW);
+
+      cbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, cbo);
+      gl.bufferData(gl.ARRAY_BUFFER, rec.colors, gl.STATIC_DRAW);
+
+      nbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, nbo);
+      gl.bufferData(gl.ARRAY_BUFFER, rec.normals, gl.STATIC_DRAW);
+
+      ibo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, rec.indices, gl.STATIC_DRAW);
+    }
+    initBlockBuffers();
+
+    // --------- Cylinder buffers ----------
+    function initCylinder() {
+      const cyl = buildCylinder(1, 1, 1, 32);
+      cylIndexCount = cyl.indices.length;
+
+      cylVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, cylVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, cyl.positions, gl.STATIC_DRAW);
+
+      cylCbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, cylCbo);
+      gl.bufferData(gl.ARRAY_BUFFER, cyl.colors, gl.STATIC_DRAW);
+
+      cylNbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, cylNbo);
+      gl.bufferData(gl.ARRAY_BUFFER, cyl.normals, gl.STATIC_DRAW);
+
+      cylIbo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cylIbo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, cyl.indices, gl.STATIC_DRAW);
+    }
+    initCylinder();
+
+    // --------- Cone buffers ----------
+    function initCone() {
+      const cone = buildCylinder(1, 0.1, 1, 32);
+      coneIndexCount = cone.indices.length;
+
+      coneVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, coneVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, cone.positions, gl.STATIC_DRAW);
+
+      coneCbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, coneCbo);
+      gl.bufferData(gl.ARRAY_BUFFER, cone.colors, gl.STATIC_DRAW);
+
+      coneNbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, coneNbo);
+      gl.bufferData(gl.ARRAY_BUFFER, cone.normals, gl.STATIC_DRAW);
+
+      coneIbo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, coneIbo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, cone.indices, gl.STATIC_DRAW);
+    }
+    initCone();
+
+    // --------- Sphere buffers ----------
+    function initSphere(color = [1, 0, 0]) {
+      const sphere = buildSphere(1.5, 32, 32);
+      const nVerts = sphere.positions.length / 3;
+
+      const colors = new Float32Array(nVerts * 3);
+      for (let i = 0; i < nVerts; i++) {
+        colors[i * 3 + 0] = color[0];
+        colors[i * 3 + 1] = color[1];
+        colors[i * 3 + 2] = color[2];
+      }
+
+      const uvs = computeSphericalUVs(sphere.positions);
+
+      sphVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, sphVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, sphere.positions, gl.STATIC_DRAW);
+
+      sphCbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, sphCbo);
+      gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+
+      sphIbo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphIbo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, sphere.indices, gl.STATIC_DRAW);
+
+      sphNbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, sphNbo);
+      gl.bufferData(gl.ARRAY_BUFFER, sphere.normals, gl.STATIC_DRAW);
+
+      const sphUVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, sphUVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
+
+      sphereSets.push({
+        sphVbo,
+        sphCbo,
+        sphIbo,
+        sphNbo,
+        sphUVbo,
+        indexCount: sphere.indices.length
+      });
+    }
+
+    spherePalette.forEach(c => initSphere(c));
+
+    // --------- Texture loader ---------
+    function loadTexture(url) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(
+        gl.TEXTURE_2D, 0, gl.RGBA,
+        1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+        new Uint8Array([128, 128, 128, 255])
+      );
+
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+
+      const img = new Image();
+      img.onload = function () {
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,
+          gl.UNSIGNED_BYTE, img);
+        gl.generateMipmap(gl.TEXTURE_2D);
+      };
+      img.src = url;
+      return tex;
+    }
+
+    const teddyFurTex = loadTexture(
+      "/static/stylized-animal-fur-unity/stylized-animal-fur_albedo.png"
+    );
+
+    // --------- Teddy rig (positions in machine space) ---------
+    const teddyParts = [
+      { pos: [0.0, 25.0, 2.0], scale: [2.0, 2.6, 2.0] },  // body
+      { pos: [0.0, 29.5, 2.0], scale: [1.7, 1.5, 1.7] },  // head
+      { pos: [-1.4, 31.6, 1.4], scale: [0.7, 0.7, 0.5] }, // ear L
+      { pos: [1.4, 31.6, 1.4], scale: [0.7, 0.7, 0.5] },  // ear R
+      { pos: [-2.4, 25.0, 1.8], scale: [0.8, 1.8, 0.8] }, // arm L
+      { pos: [2.4, 25.0, 1.8], scale: [0.8, 1.8, 0.8] },  // arm R
+      { pos: [-1.2, 22.0, 2.0], scale: [1.0, 1.8, 1.0] }, // leg L
+      { pos: [1.2, 22.0, 2.0], scale: [1.0, 1.8, 1.0] },  // leg R
+      { pos: [-1.4, 21.0, 3.0], scale: [1.2, 0.8, 1.2] }, // foot L
+      { pos: [1.4, 21.0, 3.0], scale: [1.2, 0.8, 1.2] }   // foot R
+    ];
+
+    // --------- Input & camera ---------
+    let mouseDown = false, lastX, lastY, cubeRotX = 0, cubeRotY = 0;
+    let camX = 0, camY = -50, camZ = -85;
+    let camPitch = 0.3;
+    let camYaw = 0.0;
+    let lastFrameTime = Date.now();
+
+    canvas.addEventListener('mousedown', e => { mouseDown = true; lastX = e.clientX; lastY = e.clientY; });
+    canvas.addEventListener('mouseup', () => mouseDown = false);
+    canvas.addEventListener('mousemove', e => {
+      if (!mouseDown) return;
+      let dx = e.clientX - lastX;
+      let dy = e.clientY - lastY;
+      cubeRotY += dx * 0.01;
+      cubeRotX += dy * 0.01;
+      lastX = e.clientX; lastY = e.clientY;
+    });
+
+    document.addEventListener('keydown', e => {
+      const step = 0.8;
+      switch (e.key) {
+        case 'ArrowUp': camY -= step; break;
+        case 'ArrowDown': camY += step; break;
+        case 'ArrowLeft': camX += step; break;
+        case 'ArrowRight': camX -= step; break;
+        case 'w': camZ += step; break;
+        case 's': camZ -= step; break;
+      }
+    });
+
+    let autoSpin = false;
+    const clawPose = {
+      pos: [0, 0, 0],
+      rot: [0, 0, 0]
+    };
+
+    const armRig = {
+      midOffset: 0,
+      smallOffset: 0,
+      midMax: 4.0,
+      smallMax: 4.0,
+    };
+
+    const armDrop = {
+      phase: 'idle',
+      speed: 2.5
+    };
+
+    const CLAW_BOUNDS = {
+      min: { x: -4, y: 0, z: -14 },
+      max: { x: 14, y: 49, z: 4 }
+    };
+
+    function clampClaw() {
+      clawPose.pos[0] = Math.max(CLAW_BOUNDS.min.x, Math.min(CLAW_BOUNDS.max.x, clawPose.pos[0]));
+      clawPose.pos[1] = Math.max(CLAW_BOUNDS.min.y, Math.min(CLAW_BOUNDS.max.y, clawPose.pos[1]));
+      clawPose.pos[2] = Math.max(CLAW_BOUNDS.min.z, Math.min(CLAW_BOUNDS.max.z, clawPose.pos[2]));
+    }
+
+    window.addEventListener('load', () => {
+
+      const stepPos = 0.5;
+
+      const btnReset = document.getElementById('btnReset');
+      const btnSpin = document.getElementById('btnSpin');
+      const btnDrop = document.getElementById('btnDrop');
+      const btnLeft = document.getElementById('btnLeft')
+      const btnForward = document.getElementById('btnForward')
+      const btnBackward = document.getElementById('btnBackward')
+      const btnRight = document.getElementById('btnRight')
+
+      btnReset.addEventListener('click', () => {
+        cubeRotX = 0; cubeRotY = 0;
+        camX = 0; camY = -50; camZ = -85;
+        camPitch = 0.3;
+        camYaw = 0.0;
+
+        clawPose.pos = [0, 0, 0];
+        clawPose.rot = [0, 0, 0];
+        armRig.midOffset = 0;
+        armRig.smallOffset = 0;
+      });
+
+      btnSpin.addEventListener('click', () => {
+        autoSpin = !autoSpin;
+        btnSpin.textContent = `Auto-Spin: ${autoSpin ? 'On' : 'Off'}`;
+      });
+
+      btnDrop.addEventListener('click', () => {
+        if (armDrop.phase === 'idle' || armDrop.phase === 'done') {
+          armRig.midOffset = 0;
+          armRig.smallOffset = 0;
+          armDrop.phase = 'mid';
+        }
+      });
+
+      btnLeft.onclick = () => { clawPose.pos[0] -= stepPos; clampClaw(); };
+      btnRight.onclick = () => { clawPose.pos[0] += stepPos; clampClaw(); };
+      btnBackward.onclick = () => { clawPose.pos[2] += stepPos; clampClaw(); };
+      btnForward.onclick = () => { clawPose.pos[2] -= stepPos; clampClaw(); };
+    });
+
+    let fov = Math.PI / 4, aspect = canvas.width / canvas.height, zNear = 0.1, zFar = 400;
+    let f = 1 / Math.tan(fov / 2);
+    let proj = new Float32Array([
+      f / aspect, 0, 0, 0,
+      0, f, 0, 0,
+      0, 0, (zFar + zNear) / (zNear - zFar), -1,
+      0, 0, (2 * zFar * zNear) / (zNear - zFar), 0
+    ]);
+
+    let startTime = Date.now();
+
+    // -------------- Scene graph for claw --------------
+    function node(type, xf, children = []) {
+      return { type, xf, children };
+    }
+
+    const deg = a => a * Math.PI / 180;
+
+    function buildClawFullTree() {
+      const I = mat4Identity;
+      const T = (v) => mat4Translate(I(), v);
+      const RX = (a, M) => mat4RotateX(M, a);
+      const RY = (a, M) => mat4RotateY(M, a);
+      const RZ = (a, M) => mat4RotateZ(M, a);
+      const S = (s, M) => mat4Scale(M, s);
+
+      function TRS({ translate = [0, 0, 0], rotate = [0, 0, 0], scale = [1, 1, 1] }) {
+        return () => {
+          let M = T(translate);
+          M = RX(rotate[0], M);
+          M = RY(rotate[1], M);
+          M = RZ(rotate[2], M);
+          M = S(scale, M);
+          return M;
+        };
+      }
+
+      function TRS_YawAbout({ offset = [0, 0, 0], rotXYZ = [0, 0, 0], scale = [1, 1, 1], pivotY = null }) {
+        return () => {
+          let M = mat4Identity();
+          M = mat4Translate(M, offset);
+          M = mat4RotateX(M, rotXYZ[0]);
+          M = mat4RotateZ(M, rotXYZ[2]);
+          M = mat4Scale(M, scale);
+          if (pivotY) {
+            M = mat4RotateYAboutPoint(M, rotXYZ[1], pivotY);
+          } else {
+            M = mat4RotateY(M, rotXYZ[1]);
+          }
+          return M;
+        };
+      }
+
+      function TRS_ArmSlide({ offset = [0, 0, 0], rotXYZ = [0, 0, 0], scale = [1, 1, 1], getDrop = () => 0 }) {
+        return () => {
+          let M = mat4Identity();
+          M = mat4Translate(M, offset);
+          M = mat4RotateX(M, rotXYZ[0]);
+          M = mat4RotateZ(M, rotXYZ[2]);
+          const d = getDrop();
+          if (d !== 0) M = mat4Translate(M, [0, -d, 0]);
+          M = mat4Scale(M, scale);
+          M = mat4RotateY(M, rotXYZ[1]);
+          return M;
+        };
+      }
+
+      const lowClaw = node('group', null, [
+        node('cone', TRS({
+          translate: [-5.0, 34.7, 6.5],
+          rotate: [deg(-50), deg(0), deg(0)],
+          scale: [0.3, 3.0, 0.3]
+        })),
+
+        node('cone', TRS_YawAbout({
+          offset: [-6.7, 34.7, 4.3],
+          rotXYZ: [deg(-50), deg(120), deg(0)],
+          scale: [0.3, 3.0, 0.3],
+          pivotY: [-6.7, 41.0, 4.3]
+        })),
+
+        node('cone', TRS_YawAbout({
+          offset: [-3.5, 34.7, 4.3],
+          rotXYZ: [deg(-50), deg(240), deg(0)],
+          scale: [0.3, 3.0, 0.3],
+          pivotY: [-3.5, 41.0, 4.3]
+        })),
+      ]);
+
+      const midClaw = node('group', null, [
+        node('cyl', TRS({
+          translate: [-5.0, 37.0, 7.6],
+          rotate: [deg(10), deg(0), deg(0)],
+          scale: [0.3, 3.0, 0.3]
+        })),
+
+        node('cyl', TRS_YawAbout({
+          offset: [-7.4, 37.0, 3.9],
+          rotXYZ: [deg(10), deg(120), deg(0)],
+          scale: [0.3, 3.0, 0.3],
+          pivotY: [-7.4, 41.0, 3.9]
+        })),
+
+        node('cyl', TRS_YawAbout({
+          offset: [-2.9, 37.0, 3.9],
+          rotXYZ: [deg(10), deg(240), deg(0)],
+          scale: [0.3, 3.0, 0.3],
+          pivotY: [-2.9, 41.0, 3.9]
+        })),
+      ]);
+
+      const upClaw = node('group', null, [
+        node('cyl', TRS({
+          translate: [-5.0, 39.3, 6.3],
+          rotate: [deg(50), deg(0), deg(0)],
+          scale: [0.3, 3.0, 0.3]
+        })),
+
+        node('cyl', TRS_YawAbout({
+          offset: [-6.3, 39.3, 4.5],
+          rotXYZ: [deg(50), deg(120), deg(0)],
+          scale: [0.3, 3.0, 0.3],
+          pivotY: [-6.3, 41.0, 4.5]
+        })),
+
+        node('cyl', TRS_YawAbout({
+          offset: [-4.0, 39.3, 4.5],
+          rotXYZ: [deg(50), deg(240), deg(0)],
+          scale: [0.3, 3.0, 0.3],
+          pivotY: [-4.0, 41.0, 4.5]
+        })),
+      ]);
+
+      const upperArm = node('group', null, [
+        node('cyl', TRS({
+          translate: [-5.1, 45.0, 5.2],
+          rotate: [deg(0), deg(0), deg(0)],
+          scale: [1.0, 5.0, 1.0]
+        }))
+      ]);
+
+      const lowArm = node('group',
+        TRS_ArmSlide({
+          offset: [0, 0, 0],
+          rotXYZ: [0, 0, 0],
+          scale: [1, 1, 1],
+          getDrop: () => armRig.smallOffset
+        }),
+        [
+          node('cyl', TRS({
+            translate: [-5.1, 43.0, 5.2],
+            rotate: [0, 0, 0],
+            scale: [0.6, 5.0, 0.6]
+          })),
+          upClaw, midClaw, lowClaw
+        ]
+      );
+
+      const arm = node('group',
+        TRS_ArmSlide({
+          offset: [0, 0, 0],
+          rotXYZ: [0, 0, 0],
+          scale: [1, 1, 1],
+          getDrop: () => armRig.midOffset
+        }),
+        [
+          node('cyl', TRS({
+            translate: [-5.1, 44.0, 5.2],
+            rotate: [0, 0, 0],
+            scale: [0.8, 5.0, 0.8]
+          })),
+          lowArm
+        ]
+      );
+
+      const rootXf = () => {
+        let M = mat4Identity();
+        M = mat4Translate(M, clawPose.pos);
+        M = mat4RotateY(M, clawPose.rot[1]);
+        M = mat4RotateX(M, clawPose.rot[0]);
+        M = mat4RotateZ(M, clawPose.rot[2]);
+        return M;
+      };
+
+      return node('group', rootXf, [upperArm, arm]);
+    }
+
+    function bindGeometry(type) {
+      if (type === 'cyl') {
+        gl.bindBuffer(gl.ARRAY_BUFFER, cylVbo);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+        if (colorLoc !== -1) {
+          gl.bindBuffer(gl.ARRAY_BUFFER, cylCbo);
+          gl.enableVertexAttribArray(colorLoc);
+          gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, cylNbo);
+        gl.enableVertexAttribArray(normalLoc);
+        gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cylIbo);
+
+        gl.disableVertexAttribArray(aUVLoc);
+        gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
+        if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+
+        return cylIndexCount;
+      }
+
+      if (type === 'cone') {
+        gl.bindBuffer(gl.ARRAY_BUFFER, coneVbo);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+        if (colorLoc !== -1) {
+          gl.bindBuffer(gl.ARRAY_BUFFER, coneCbo);
+          gl.enableVertexAttribArray(colorLoc);
+          gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, coneNbo);
+        gl.enableVertexAttribArray(normalLoc);
+        gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, coneIbo);
+
+        gl.disableVertexAttribArray(aUVLoc);
+        gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
+        if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+
+        return coneIndexCount;
+      }
+
+      return 0;
+    }
+
+    function drawSceneGraph(root, modelViewMatrix, allRotation) {
+      const stack = [{ n: root, M: mat4Identity() }];
+
+      while (stack.length) {
+        const { n, M } = stack.pop();
+        const Mlocal = n.xf ? n.xf() : mat4Identity();
+        const Maccum = multiplyMat4(M, Mlocal);
+
+        if (n.type !== 'group') {
+          const Mscene = multiplyMat4(allRotation, Maccum);
+          const MV = multiplyMat4(modelViewMatrix, Mscene);
+          const N = normalMatrixFromMV(MV);
+
+          gl.uniformMatrix4fv(uMTM, false, Mscene);
+          gl.uniformMatrix3fv(uNormalMatrix, false, N);
+
+          const count = bindGeometry(n.type);
+          if (count > 0) gl.drawElements(gl.TRIANGLES, count, gl.UNSIGNED_SHORT, 0);
+        }
+
+        if (n.children && n.children.length) {
+          for (let i = n.children.length - 1; i >= 0; --i) {
+            stack.push({ n: n.children[i], M: Maccum });
+          }
+        }
+      }
+    }
+
+    const clawRoot = buildClawFullTree();
+
+    function drawTexturedTeddy(allRotation, modelViewMatrix) {
+      const s = sphereSets[0];
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, s.sphVbo);
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, s.sphCbo);
+      gl.enableVertexAttribArray(colorLoc);
+      gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, s.sphNbo);
+      gl.enableVertexAttribArray(normalLoc);
+      gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, 0, 0);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, s.sphUVbo);
+      gl.enableVertexAttribArray(aUVLoc);
+      gl.vertexAttribPointer(aUVLoc, 2, gl.FLOAT, false, 0, 0);
+
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, s.sphIbo);
+
+      if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 1);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, teddyFurTex);
+
+      for (const part of teddyParts) {
+        const I = mat4Identity();
+        const Tm = mat4Translate(I, part.pos);
+        const Sm = mat4Scale(I, part.scale);
+
+        const M = multiplyMat4(allRotation, multiplyMat4(Tm, Sm));
+        const MV = multiplyMat4(modelViewMatrix, M);
+        const N = normalMatrixFromMV(MV);
+
+        gl.uniformMatrix4fv(uMTM, false, M);
+        gl.uniformMatrix3fv(uNormalMatrix, false, N);
+        gl.drawElements(gl.TRIANGLES, s.indexCount, gl.UNSIGNED_SHORT, 0);
+      }
+
+      if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+      gl.disableVertexAttribArray(aUVLoc);
+      gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
+    }
+
+    function render() {
+      gl.useProgram(program);
+
+      gl.enable(gl.DEPTH_TEST);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      let cx = Math.cos(cubeRotY), sx = Math.sin(cubeRotY);
+      let cy = Math.cos(cubeRotX), sy = Math.sin(cubeRotX);
+      let rotX = [1, 0, 0, 0, 0, cy, sy, 0, 0, -sy, cy, 0, 0, 0, 0, 1];
+      let rotY = [cx, 0, -sx, 0, 0, 1, 0, 0, sx, 0, cx, 0, 0, 0, 0, 1];
+
+      if (autoSpin) {
+        cubeRotY += 0.03;
+      }
+
+      let allRotation = multiplyMat4(rotY, rotX);
+
+      let modelViewMatrix = mat4Identity();
+      let modelTransformationMatrix = mat4Identity();
+
+      const now = Date.now();
+      const dt = (now - lastFrameTime) / 1000.0;
+      lastFrameTime = now;
+
+      modelTransformationMatrix = multiplyMat4(modelTransformationMatrix, allRotation);
+
+      const cY = Math.cos(camYaw), sY = Math.sin(camYaw);
+      const cP = Math.cos(camPitch), sP = Math.sin(camPitch);
+
+      const camRotY = [cY, 0, -sY, 0, 0, 1, 0, 0, sY, 0, cY, 0, 0, 0, 0, 1];
+      const camRotX = [1, 0, 0, 0, 0, cP, sP, 0, 0, -sP, cP, 0, 0, 0, 0, 1];
+
+      modelViewMatrix = multiplyMat4(camRotY, multiplyMat4(camRotX, modelViewMatrix));
+      modelViewMatrix = mat4Translate(modelViewMatrix, [camX, camY, camZ]);
+
+      const elapsed = (now - startTime) / 1000.0;
+      if (timeLoc) gl.uniform1f(timeLoc, elapsed);
+
+      gl.uniformMatrix4fv(uPM, false, proj);
+      gl.uniformMatrix4fv(uMVM, false, modelViewMatrix);
+      gl.uniformMatrix4fv(uMTM, false, modelTransformationMatrix);
+
+      // --- draw blocks (untextured) ---
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+      if (colorLoc !== -1) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, cbo);
+        gl.enableVertexAttribArray(colorLoc);
+        gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+      }
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, nbo);
+      gl.enableVertexAttribArray(normalLoc);
+      gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, 0, 0);
+
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+
+      gl.disableVertexAttribArray(aUVLoc);
+      gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
+      if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+
+      function drawBlock(offset, scale) {
+        const I = mat4Identity();
+        const Tm = mat4Translate(I, offset);
+        const Sm = mat4Scale(I, scale);
+
+        const M = multiplyMat4(allRotation, multiplyMat4(Tm, Sm));
+        const MV = multiplyMat4(modelViewMatrix, M);
+        const N = normalMatrixFromMV(MV);
+
+        gl.uniformMatrix4fv(uMTM, false, M);
+        gl.uniformMatrix3fv(uNormalMatrix, false, N);
+
+        gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
+      }
+
+      // machine walls / top / bottom
+      drawBlock([-5, 10, -5], [10, 20, 10]);
+      drawBlock([5, 10, -5], [10, 20, 10]);
+      drawBlock([5, 10, 5], [10, 20, 10]);
+      drawBlock([-9.5, 10, 5], [1, 20, 10]);
+
+      drawBlock([-9.5, 24.5, 5], [1, 10, 10]);
+      drawBlock([0.5, 24.5, 5], [1, 10, 10]);
+      drawBlock([-4.5, 24.5, -0.5], [11, 10, 1]);
+      drawBlock([-4.5, 24.5, 9.5], [11, 10, 1]);
+
+      drawBlock([-4.5, 17.5, 9.5], [10, 5, 1]);
+
+      drawBlock([0, 0, 0], [20, 10, 20]);  // bottom
+      drawBlock([0, 50, 0], [20, 5, 20]);  // top
+
+      // --- random spheres (untextured) ---
+      let r = 0;
+      let r2 = 23;
+      for (let levels = 0; levels < 4; levels++) {
+
+        for (let k = 0; k < 6; k++) {
+          for (let i = 0; i < 3; i++) {
+            const s = sphereSets[randColorPalette[r]];
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, s.sphVbo);
+            gl.enableVertexAttribArray(posLoc);
+            gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, s.sphCbo);
+            gl.enableVertexAttribArray(colorLoc);
+            gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, s.sphNbo);
+            gl.enableVertexAttribArray(normalLoc);
+            gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, 0, 0);
+
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, s.sphIbo);
+
+            gl.disableVertexAttribArray(aUVLoc);
+            gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
+            if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+
+            const x = 2.5 + i * 3 + randJitterX[r];
+            const z = 8 - k * 3.3 + randJitterZ[r];
+            const y = 21.5 + levels * 2.5;
+
+            const Tm = mat4Translate(mat4Identity(), [x, y, z]);
+            const M = multiplyMat4(allRotation, Tm);
+            const MV = multiplyMat4(modelViewMatrix, M);
+            const N = normalMatrixFromMV(MV);
+
+            gl.uniformMatrix4fv(uMTM, false, M);
+            gl.uniformMatrix3fv(uNormalMatrix, false, N);
+            gl.drawElements(gl.TRIANGLES, s.indexCount, gl.UNSIGNED_SHORT, 0);
+
+            r++;
+          }
+        }
+
+        for (let k = 0; k < 3; k++) {
+          for (let i = 0; i < 3; i++) {
+            const s = sphereSets[randColorPalette[r2]];
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, s.sphVbo);
+            gl.enableVertexAttribArray(posLoc);
+            gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, s.sphCbo);
+            gl.enableVertexAttribArray(colorLoc);
+            gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, s.sphNbo);
+            gl.enableVertexAttribArray(normalLoc);
+            gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, 0, 0);
+
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, s.sphIbo);
+
+            gl.disableVertexAttribArray(aUVLoc);
+            gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
+            if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+
+            const x = -8.5 + i * 3.6 + randJitterX[r2];
+            const z = -2.5 - k * 3 + randJitterZ[r2];
+            const y = 21.5 + levels * 2.5;
+
+            const Tm = mat4Translate(mat4Identity(), [x, y, z]);
+            const M = multiplyMat4(allRotation, Tm);
+            const MV = multiplyMat4(modelViewMatrix, M);
+            const N = normalMatrixFromMV(MV);
+
+            gl.uniformMatrix4fv(uMTM, false, M);
+            gl.uniformMatrix3fv(uNormalMatrix, false, N);
+            gl.drawElements(gl.TRIANGLES, s.indexCount, gl.UNSIGNED_SHORT, 0);
+
+            r2++;
+          }
+        }
+      }
+
+      // --- draw textured teddy (uses fur texture) ---
+      drawTexturedTeddy(allRotation, modelViewMatrix);
+
+      // --- update claw drop animation ---
+      if (armDrop.phase === 'mid') {
+        armRig.midOffset = Math.min(armRig.midOffset + armDrop.speed * dt, armRig.midMax);
+        if (armRig.midOffset >= armRig.midMax) armDrop.phase = 'small';
+      } else if (armDrop.phase === 'small') {
+        armRig.smallOffset = Math.min(armRig.smallOffset + armDrop.speed * dt, armRig.smallMax);
+        if (armRig.smallOffset >= armRig.smallMax) armDrop.phase = 'done';
+      }
+
+      // --- draw claw scene graph ---
+      drawSceneGraph(clawRoot, modelViewMatrix, allRotation);
+    }
+
+    window.onload = function () {
+      setInterval(render, 30);
+    }
+  </script>
+</body>
+
+</html>
