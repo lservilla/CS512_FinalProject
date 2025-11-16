@@ -37,7 +37,7 @@ def skeeBall():
 @app.route("/newGame")
 def newGame():
     return render_template(
-        "newGame.html"
+        "pacMan.html"
     )
 
 if __name__ == "__main__":
