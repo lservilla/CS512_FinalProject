@@ -156,7 +156,7 @@
 
 </head>
 <body>
-    <h1> PAC MAN - EAT TO SURVIVE</h1>
+    <h1>🎮 PAC MAN - EAT TO SURVIVE 🎮</h1>
     <canvas id="glcanvas" width="640" height="480"></canvas>
     <div style="display: flex; flex-direction: column; gap: 10px; visibility:hidden; height:0; overflow:hidden;">
         <div>
@@ -190,6 +190,28 @@
                 <span class="arrow">▼</span>
             </button>
         </div>
+        
+            <div class="section">
+                <strong>Ghost AI System:</strong>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="color-box" style="background: #ff0000;"></div>
+                        <span>Blinky (Red) - Chases Pac-Man directly</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="color-box" style="background: #ffb8ff;"></div>
+                        <span>Pinky (Pink) - Ambushes ahead</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="color-box" style="background: #00ffff;"></div>
+                        <span>Inky (Cyan) - Unpredictable</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="color-box" style="background: #ffb851;"></div>
+                        <span>Clyde (Orange) - Random patrol</span>
+                    </div>
+                </div>
+            </div>
     </div>
 
     <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
