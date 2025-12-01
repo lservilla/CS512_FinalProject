@@ -6,7 +6,7 @@
 <style>
     body {
         position: relative;
-        background: radial-gradient(circle at 50% 30%, #111111 0%, #000000 60%, #000f15 100%);
+        background: radial-gradient(circle at 50% 30%, #6e1313 0%, #525151 60%, #000f15 100%);
         background-attachment: fixed;
         color: #ddd;
         font-family: monospace;
@@ -123,7 +123,7 @@
       margin-top: 12px;
     }
 
-    #btnForward {
+    #btnUp {
       grid-column: 2;
       grid-row: 1;
     }
@@ -138,7 +138,7 @@
       grid-row: 2;
     }
 
-    #btnBackward {
+    #btnDown {
       grid-column: 2;
       grid-row: 3;
     }
@@ -152,12 +152,46 @@
         opacity:0.01;
         pointer-events:none;
     }
+    #gameInfo {
+        display: flex;
+        gap: 40px;
+        margin-bottom: 20px;
+        color: white;
+        font-size: 24px;
+        font-weight: bold;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    }
+    #controls {
+        margin-top: 20px;
+        color: white;
+        text-align: center;
+        font-size: 18px;
+    }
+    #gameOver {
+        display: none;
+        margin-top: 20px;
+        padding: 20px;
+        background: rgba(255, 0, 0, 0.8);
+        border-radius: 10px;
+        color: white;
+        font-size: 24px;
+        font-weight: bold;
+    }
 </style>
 
 </head>
 <body>
     <h1>🎮 PAC MAN - EAT TO SURVIVE 🎮</h1>
-    <canvas id="glcanvas" width="640" height="480"></canvas>
+    <div id="gameInfo">
+        <div>Score: <span id="score">0</span></div>
+        <div>Lives: <span id="lives">3</span></div>
+    </div>
+    <canvas id="glcanvas" width="570" height="630"></canvas>
+    <div id="gameOver">
+        GAME OVER!
+        <br>
+        <button onclick="location.reload()">Restart</button>
+    </div>
     <div style="display: flex; flex-direction: column; gap: 10px; visibility:hidden; height:0; overflow:hidden;">
         <div>
             <textarea id="vertEditor"></textarea>
@@ -169,12 +203,12 @@
 
     <div class="controlsWrapper">
         <div class="controls">
-            <button id="btnReset" class="btn">Reset</button>
+            <button onclick="location.reload()" id="btnReset" class="btn">Reset</button>
             <a id="btnBack" class="btn" href="{{ url_for('home') }}">Home</a>
         </div>
 
         <div class="lowerControls" aria-label="Movement controls">
-            <button id="btnForward" class="btn btn-pad" aria-label="Move forward">
+            <button id="btnUp" class="btn btn-pad" aria-label="Move Up">
                 <span class="arrow">▲</span>
             </button>
 
@@ -186,7 +220,7 @@
                 <span class="arrow">▶</span>
             </button>
 
-            <button id="btnBackward" class="btn btn-pad" aria-label="Move back">
+            <button id="btnDown" class="btn btn-pad" aria-label="Move Down">
                 <span class="arrow">▼</span>
             </button>
         </div>
@@ -214,80 +248,71 @@
             </div>
     </div>
 
-    <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
-    in vec3 aPosition;
-    in vec3 aColor;
-    in vec3 aNormal;
-    in vec2 aUV;
-
-    uniform mat4 uModelViewMatrix;
-    uniform mat4 uProjectionMatrix;
-    uniform mat4 uModelTransformationMatrix;
-    uniform mat3 uNormalMatrix;
-
-    out vec3 vColor;
-    out vec3 vPosVS;
-    out vec3 vNormalVS;
-    out vec2 vUV;
-
+<script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
+    in vec2 aPosition;
+    in vec2 aTexCoord;
+    uniform mat3 uMatrix;
+    out vec2 vTexCoord;
+    
     void main() {
-      mat4 MV = uModelViewMatrix * uModelTransformationMatrix;
-      vec4 posVS = MV * vec4(aPosition, 1.0);
-      gl_Position = uProjectionMatrix * posVS;
-
-      vColor    = aColor;
-      vPosVS    = posVS.xyz;
-      vNormalVS = normalize(uNormalMatrix * aNormal);
-      vUV       = aUV;
+        vec2 pos = (uMatrix * vec3(aPosition, 1.0)).xy;
+        gl_Position = vec4(pos, 0.0, 1.0);
+        vTexCoord = aTexCoord;
     }
   </script>
 
   <!-- Fragment Shader (WebGL2) -->
   <script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
-    precision mediump float;
-
-    in vec3 vColor;
-    in vec3 vPosVS;
-    in vec3 vNormalVS;
-    in vec2 vUV;
-
-    uniform vec3  uLightDirVS;  
-    uniform float uAmbient;        
-    uniform float uSpecPower;      
-    uniform float uSpecStrength;  
-
-    uniform float uDepthNear;  
-    uniform float uDepthFar;   
-    uniform float uDepthMin;
-
-    uniform sampler2D uTex;
-    uniform bool      uUseTexture;
-
+    precision highp float;
+    in vec2 vTexCoord;
+    uniform vec4 uColor;
+    uniform float uRadius;
+    uniform int uShape;
+    uniform float uMouth;
     out vec4 fragColor;
-
+    
     void main() {
-      vec3 N = normalize(vNormalVS);
-      vec3 L = normalize(-uLightDirVS);
-      float NdotL = max(dot(N, L), 0.0);
-
-      vec3 V = normalize(-vPosVS);
-      vec3 H = normalize(L + V);
-      float spec = pow(max(dot(N, H), 0.0), uSpecPower);
-
-      vec3 baseColor = vColor;
-      if (uUseTexture) {
-        baseColor = texture(uTex, vUV).rgb;
-      }
-
-      vec3 lit = baseColor * (uAmbient + NdotL) + vec3(spec) * uSpecStrength;
-
-      float d = length(vPosVS);                           
-      float t = clamp((d - uDepthNear) / (uDepthFar - uDepthNear), 0.0, 1.0);
-      t = smoothstep(0.0, 1.0, t);                       
-      float depthShade = mix(1.0, uDepthMin, t);          
-      vec3 finalColor = lit * depthShade;
-
-      fragColor = vec4(finalColor, 1.0);
+        if (uShape == 0) { // Circle
+            vec2 center = vec2(0.5, 0.5);
+            float dist = distance(vTexCoord, center);
+            if (dist > uRadius) discard;
+            fragColor = uColor;
+        } else if (uShape == 1) { // Pac-Man
+            vec2 center = vec2(0.5, 0.5);
+            vec2 dir = vTexCoord - center;
+            float dist = length(dir);
+            float angle = atan(dir.y, dir.x);
+            float mouthAngle = uMouth * 0.6;
+            if (dist > 0.5) discard;
+            if (abs(angle) < mouthAngle) discard;
+            fragColor = uColor;
+        } else if (uShape == 2) { // Square (walls)
+            fragColor = uColor;
+        } else if (uShape == 3) { // Ghost
+            vec2 center = vec2(0.5, 0.6);
+            float dist = distance(vec2(vTexCoord.x, vTexCoord.y * 1.2), center);
+            if (vTexCoord.y < 0.6 && dist > 0.5) discard;
+            if (vTexCoord.y >= 0.8) {
+                float wave = sin(vTexCoord.x * 15.0) * 0.1;
+                if (vTexCoord.y > 0.8 + wave) discard;
+            }
+            
+            // Eyes
+            vec2 leftEye = vec2(0.35, 0.4);
+            vec2 rightEye = vec2(0.65, 0.4);
+            float eyeSize = 0.08;
+            
+            if (distance(vTexCoord, leftEye) < eyeSize || distance(vTexCoord, rightEye) < eyeSize) {
+                fragColor = vec4(1.0, 1.0, 1.0, 1.0);
+            } else {
+                float pupilSize = 0.04;
+                if (distance(vTexCoord, leftEye) < pupilSize || distance(vTexCoord, rightEye) < pupilSize) {
+                    fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                } else {
+                    fragColor = uColor;
+                }
+            }
+        }
     }
   </script>
 
@@ -304,7 +329,7 @@
       }
       return shader;
     }
-
+    
     function createProgram(gl, vsSource, fsSource) {
       let vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
       let fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
@@ -322,10 +347,347 @@
     const canvas = document.getElementById("glcanvas");
     const gl = canvas.getContext("webgl2");
     if (!gl) alert("WebGL2 not supported");
-
+    
     let vertEditor = document.getElementById("vertEditor");
     let fragEditor = document.getElementById("fragEditor");
     vertEditor.value = document.getElementById("vertex-shader").textContent;
     fragEditor.value = document.getElementById("fragment-shader").textContent;
+
+    //create program
+    const program = createProgram(gl,
+        document.getElementById("vertex-shader").textContent,
+        document.getElementById("fragment-shader").textContent
+    );
+
+    const posLoc = gl.getAttribLocation(program, 'aPosition');
+    const texLoc = gl.getAttribLocation(program, 'aTexCoord');
+    const matLoc = gl.getUniformLocation(program, 'uMatrix');
+    const colorLoc = gl.getUniformLocation(program, 'uColor');
+    const radiusLoc = gl.getUniformLocation(program, 'uRadius');
+    const shapeLoc = gl.getUniformLocation(program, 'uShape');
+    const mouthLoc = gl.getUniformLocation(program, 'uMouth');
+
+    //buffers
+    const posBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        0, 0, 1, 0, 0, 1,
+        0, 1, 1, 0, 1, 1
+    ]), gl.STATIC_DRAW);
+
+    const texBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, texBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        0, 0, 1, 0, 0, 1,
+        0, 1, 1, 0, 1, 1
+    ]), gl.STATIC_DRAW);
+
+    const maze= buildMaze();
+
+    const cellSize=30;
+
+    const gameState ={
+        pacman: {x :1, y:1, dir:0, nextDir:0, mouthOpen:0, mouthSpeed: 0.15},
+        ghosts: [],
+        dots: [],
+        pellets: [],
+        score:0,
+        lives: 3,
+        frightened: false,
+        frightenedTimer:0,
+        gameOver:false
+    }
+
+    //define dots and pellets 
+    for(let y=0; y<maze.length; y++){
+        for(let x=0; x<maze[0].length; x++){
+            if(maze[y][x]===1){
+                gameState.dots.push({x:x, y:y});
+            }else if (maze[y][x]===3){
+                gameState.pellets.push({x:x, y:y});
+            }
+        }
+    }
+
+    //Initialize ghosts
+    gameState.ghosts = [
+        {x: 9, y:9, dir:0, color:[1, 0, 0, 1], speed:0.8, lastDirChange:0},
+        {x: 9, y:11, dir:1, color:[1, 0.7, 0.8, 1], speed:0.75, lastDirChange:0},
+        {x: 9, y:9, dir:2, color:[0, 1, 1, 1], speed:0.85, lastDirChange:0},
+        {x: 9, y:11, dir:3, color:[1, 0.6, 0, 1], speed:0.7, lastDirChange:0},
+    ];
+
+    function createMatrix(tx, ty, sx, sy){
+        const w = canvas.width;
+        const h= canvas.height;
+        return [
+            2* sx/w, 0, 0,
+            0, -2*sy/h, 0,
+            -1+2*tx/w, 1-2*ty/h, 1
+        ];
+    }
+
+    function canMove(x, y){
+        const mx= Math.round(x);
+        const my = Math.round(y);
+        if(my<0 || my>=maze.length || mx<0 || mx>=maze[0].length)return true;
+        return maze[my][mx]!==0;
+    }
+
+    function drawShape(x, y, size, color, shape, radius, mouth){
+        if (radius ===undefined) radius =0.5;
+        if (mouth === undefined) mouth =0;
+
+        const mat =createMatrix(x*cellSize, y*cellSize, size, size);
+
+        gl.uniformMatrix3fv(matLoc, false, mat);
+        gl.uniform4fv(colorLoc, color);
+        gl.uniform1f(radiusLoc, radius);
+        gl.uniform1i(shapeLoc, shape);
+        gl.uniform1f(mouthLoc, mouth);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    let lastTime =0;
+    function gameLoop(time){
+        if(gameState.gameOver)return;
+
+        const dt=Math.min((time-lastTime)/1000, 0.05);
+        lastTime=time;
+
+        //Update Mouth Animation
+        gameState.pacman.mouthOpen += gameState.pacman.mouthSpeed;
+        if(gameState.pacman.mouthOpen>1){
+            gameState.pacman.mouthOpen =1;
+            gameState.pacman.mouthSpeed =-0.15;
+        }else if (gameState.pacman.mouthOpen <0){
+            gameState.pacman.mouthOpen=0;
+            gameState.pacman.mouthSpeed =0.15;
+        }
+
+        //Direction Change
+        if(gameState.pacman.dir !==gameState.pacman.nextDir){
+            const dx= [0.5, 0, -0.5, 0][gameState.pacman.nextDir];
+            const dy= [0, 0.5, 0, -0.5][gameState.pacman.nextDir];
+            if(canMove(gameState.pacman.x + dx, gameState.pacman.y +dy)){
+                gameState.pacman.dir =gameState.pacman.nextDir;
+            }
+        }
+
+        //Move pac-man
+        const speed=3*dt;
+        const dx=[speed, 0, -speed, 0][gameState.pacman.dir];
+        const dy=[0, speed, 0, -speed][gameState.pacman.dir];
+        const newX = gameState.pacman.x +dx;
+        const newY =gameState.pacman.y +dy;
+
+        if(canMove(newX, newY)){
+            gameState.pacman.x=newX;
+            gameState.pacman.y=newY;
+        }
+
+        if(gameState.pacman.x<-1) gameState.pacman.x =maze[0].length;
+        if(gameState.pacman.x> maze[0].length) gameState.pacman.x =-1;
+
+        //check dot collision 
+        const px =Math.round(gameState.pacman.x);
+        const py =Math.round(gameState.pacman.y);
+
+        gameState.dots = gameState.dots.filter(function(dot){
+            if(dot.x == px && dot.y === py){
+                gameState.score +=10;
+                document.getElementById('score').textContent=gameState.score;
+                return false;
+            }
+            return true;
+        });
+
+        //check pellet collision
+        gameState.pellets = gameState.pellets.filter(function(pellet){
+            if(pellet.x===px && pellet.y===py){
+                gameState.score +=50;
+                gameState.frightened=true;
+                gameState.frightenedTimer=6;
+                document.getElementById('score').textContent=gameState.score;
+                return false;
+            }
+            return true;
+        });
+        // CHECK FOR WIN CONDITION
+        if(gameState.dots.length === 0 && gameState.pellets.length === 0){
+            gameState.gameOver = true;
+            document.getElementById('gameOver').innerHTML = `
+                <div style="color: #00ff00;">YOU WIN!</div>
+                <div>Final Score: ${gameState.score}</div>
+                <button onclick="location.reload()">Play Again</button>
+            `;
+            document.getElementById('gameOver').style.display = 'block';
+            return;
+        }
+
+        // update frightened mode
+        if(gameState.frightened){
+            gameState.frightenedTimer-=dt;
+            if(gameState.frightenedTimer <=0){
+                gameState.frightened = false;
+            }
+        }
+
+        //move Ghost;
+        gameState.ghosts.forEach(function(ghost){
+            ghost.lastDirChange +=dt;
+
+            //direction change
+            if(ghost.lastDirChange >0.3){
+                const possibleDirs =[];
+                for(let d=0; d<4; d++){
+                    const testDx= [0.5, 0, -.5, 0][d];
+                    const testDy = [0, 0.5, 0, -0.5][d];
+                    if(canMove(ghost.x + testDx, ghost.y+testDy)){
+                        possibleDirs.push(d);
+                    }
+                }
+
+                //Move towards pacman
+                if(!gameState.frightened && possibleDirs.length>1){
+                    let bestDir = ghost.dir;
+                    let bestDist = Infinity;
+
+                    possibleDirs.forEach(function(d){
+                        const testDx = [1, 0, -1, 0][d];
+                        const testDy = [0, 1, 0, -1][d];
+                        const testX= ghost.x + testDx;
+                        const testY = ghost.y + testDy;
+                        const dist = Math.abs(testX - gameState.pacman.x) + Math.abs(testY-gameState.pacman.y);
+                        if(dist<bestDist){
+                            bestDist=dist;
+                            bestDir = d;
+                        }
+                    });
+
+                    ghost.dir = bestDir;
+
+                }else if(possibleDirs.length >0){
+                    ghost.dir = possibleDirs[Math.floor(Math.random() * possibleDirs.length)];
+    
+                }
+                ghost.lastDirChange=0;
+            }
+
+            const ghostSpeed =gameState.frightened ? speed*0.5 : speed* ghost.speed;
+            const gdx = [ghostSpeed, 0, -ghostSpeed, 0][ghost.dir];
+            const gdy = [0, ghostSpeed, 0, -ghostSpeed][ghost.dir];
+            const newGX = ghost.x +gdx;
+            const newGY = ghost.y + gdy;
+
+            if(canMove(newGX, newGY)){
+                ghost.x= newGX;
+                ghost.y = newGY;
+            }
+
+        });
+
+        //ghost collision check
+        gameState.ghosts.forEach(function(ghost){
+            const dist = Math.sqrt(Math.pow(ghost.x - gameState.pacman.x, 2) + Math.pow(ghost.y - gameState.pacman.y, 2));
+            if(dist < 0.6){
+                if(gameState.frightened){
+                    ghost.x =9;
+                    ghost.y =10;
+                    gameState.score +=200;
+                    document.getElementById('score').textContent=gameState.score;
+
+                }else{
+                    gameState.lives--;
+                    document.getElementById('lives').textContent=gameState.lives;
+                    if(gameState.lives <=0){
+                        gameState.gameOver=true;
+                        document.getElementById('gameOver').style.display = 'block';
+                        return;
+                    }else{
+                        gameState.pacman.x =1;
+                        gameState.pacman.y=1;
+                        gameState.pacman.dir = 0;
+
+                    }
+                }
+            }
+        });
+
+        //Render 
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        gl.useProgram(program);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, texBuffer);
+        gl.enableVertexAttribArray(texLoc);
+        gl.vertexAttribPointer(texLoc, 2, gl.FLOAT, false, 0, 0);
+
+        //Draw Maze;
+        for(let y=0; y<maze.length; y++){
+            for(let x=0; x<maze[0].length; x++){
+                if(maze[y][x]==0){
+                    drawShape(x, y, cellSize, [0.1, 0.1, 0.9, 1], 2);
+                }
+            }
+        }
+
+        //Draw pac-man food
+        gameState.dots.forEach(function(dot){
+            drawShape(dot.x, dot.y, cellSize*0.2, [1, 0.9, 0.7, 1], 0);
+        });
+
+        //Draw pellets
+        const pelletPulse = Math.sin(time*0.005)*0.1+0.9;
+        gameState.pellets.forEach(function(pellet){
+            drawShape(pellet.x, pellet.y, cellSize*0.5*pelletPulse, [1, 1, 1, 1], 0);
+        });
+
+        //draw pac-man
+        drawShape(gameState.pacman.x, gameState.pacman.y, cellSize*0.9, [1, 1, 0, 1], 1, 0.5, gameState.pacman.mouthOpen);
+
+        //draw ghosts
+        gameState.ghosts.forEach(function(ghost){
+            const color = gameState.frightened ? [0.1, 0.1, 0.8, 1]: ghost.color;
+            drawShape(ghost.x, ghost.y, cellSize*0.9, color, 3);
+        });
+
+        requestAnimationFrame(gameLoop)
+    }
+
+    //keyControls
+
+    window.addEventListener('keydown', function(e){
+        if(e.key =='ArrowRight') gameState.pacman.nextDir =0;
+        if(e.key =='ArrowDown') gameState.pacman.nextDir =1;
+        if(e.key =='ArrowLeft') gameState.pacman.nextDir =2;
+        if(e.key =='ArrowUp') gameState.pacman.nextDir =3;
+    });
+    window.addEventListener('load', () => {
+
+
+      const btnReset = document.getElementById('btnReset');
+      const btnLeft = document.getElementById('btnLeft')
+      const btnUp = document.getElementById('btnUp')
+      const btnDown = document.getElementById('btnDown')
+      const btnRight = document.getElementById('btnRight')
+
+      btnLeft.onclick = () => { gameState.pacman.nextDir=2 };
+      btnRight.onclick = () => { gameState.pacman.nextDir=0 };
+      btnDown.onclick = () => { gameState.pacman.nextDir=1 };
+      btnUp.onclick = () => { gameState.pacman.nextDir=3 };
+    //   btnReset.onclick = () =>{gameState.lives=0}
+    });
+
+    requestAnimationFrame(gameLoop);
+
+
     
     </script>
