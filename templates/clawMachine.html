@@ -389,7 +389,7 @@
         normalLoc = gl.getAttribLocation(program, "aNormal");
         aUVLoc = gl.getAttribLocation(program, "aUV");
 
-        timeLoc = gl.getUniformLocation(program, "uTime"); // may be null
+        timeLoc = gl.getUniformLocation(program, "uTime"); 
 
         uMVM = gl.getUniformLocation(program, "uModelViewMatrix");
         uPM = gl.getUniformLocation(program, "uProjectionMatrix");
@@ -409,7 +409,7 @@
         uUseTextureLoc = gl.getUniformLocation(program, "uUseTexture");
 
         gl.useProgram(program);
-        gl.uniform3f(uLightDirVS, 0.3, -0.9, 0.4);
+        gl.uniform3f(uLightDirVS, -0.9, -0.2, -0.3);
         gl.uniform1f(uAmbient, 0.85);
         gl.uniform1f(uSpecPower, 42.0);
         gl.uniform1f(uSpecStrength, 0.65);
@@ -574,27 +574,58 @@
       return tex;
     }
 
-    const teddyFurTex = loadTexture(
+    const teddyFurTexBrown = loadTexture(
       "/static/stylized-animal-fur-unity/stylized-animal-fur_albedo.png"
     );
+    const teddyFurTexBlue = loadTexture(
+      "/static/stylized-animal-fur-unity/blueFur.png"
+    );
+    const teddyFurTexPink = loadTexture(
+      "/static/stylized-animal-fur-unity/pinkFur.png"
+    );
+    const teddyFurTexPurple = loadTexture(
+      "/static/stylized-animal-fur-unity/purpleFur.png"
+    );
+
+    const teddyPawPadsTex = loadTexture(
+      "/static/brown-leather-unity/brown-leather_albedo.png"
+    )
 
     // --------- Teddy rig (positions in machine space) ---------
-    const teddyParts = {
-    body: { pos:[ 0.0, -2.0, 0.0],  rot:[0,0,0],            scale:[1.5, 2.0, 1.3], morphBase:0.0 },
-    head: { pos:[ 0.0, 2.0 ,0.0],   rot:[0,0,0],            scale:[1.3,1.2,1.2],  morphBase:0.0 },
-    earL: { pos:[-1.3, 3.6, -0.4],  rot:[0,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
-    earR: { pos:[ 1.3, 3.6, -0.4],  rot:[0,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
-    snout:{ pos:[ 0.00, 1.4, 1.6], rot:[0,0,0],            scale:[0.6,0.4,0.7], morphBase:0.0 },
-    armL: { pos:[-1.90, -0.8, 0.05],  rot:[0.50, 0.3, 0.65], scale:[0.5,1.5,0.5],    morphBase:0.0 },
-    armR: { pos:[ 1.90, -0.8, 0.05],  rot:[0.50,-0.3,-0.65], scale:[0.5,1.5,0.5],    morphBase:0.0 },
-    legL: { pos:[-1.2,-4.2, 1.2],  rot:[0.0, 0, 0.4],    scale:[0.6,0.6,1.7],   morphBase:0.0 },
-    legR: { pos:[ 1.2,-4.2, 1.2], rot:[0.0, 0,-0.4],    scale:[0.6,0.6,1.7],   morphBase:0.0 },
-    pawL: { pos:[-1.2,-2.0,0.35],   rot:[0.0,0,0.6],        scale:[0.48,0.28,0.48], morphBase:0.0 },
-    pawR: { pos:[ 1.2,-2.0,0.35],   rot:[0.0,0,-0.6],       scale:[0.48,0.28,0.48], morphBase:0.0 },
-    pawLA:{ pos:[-1.65,-0.35,0.35], rot:[0.0,0,-0.8],       scale:[0.38,0.28,0.48], morphBase:0.0 },
-    pawRA:{ pos:[ 1.65,-0.35,0.35], rot:[0.0,0, 0.8],       scale:[0.38,0.28,0.48], morphBase:0.0 },
+    const teddyPartsSitting = {
+    body: { pos:[ 0.0, -2.0, 0.0],    rot:[0,0,0],            scale:[1.5, 2.0, 1.3], morphBase:0.0 },
+    head: { pos:[ 0.0, 2.0 ,0.0],     rot:[0,0,0],            scale:[1.3,1.2,1.2],  morphBase:0.0 },
+    earL: { pos:[-1.3, 3.6, -0.4],    rot:[0,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
+    earR: { pos:[ 1.3, 3.6, -0.4],    rot:[0,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
+    snout:{ pos:[ 0.00, 1.4, 1.6],    rot:[0,0,0],            scale:[0.6,0.4,0.7], morphBase:0.0 },
+    armL: { pos:[-1.90, -0.8, 0.05],  rot:[0.50, 0.3, 0.65],  scale:[0.5,1.5,0.5],    morphBase:0.0 },
+    armR: { pos:[ 1.90, -0.8, 0.05],  rot:[0.50,-0.3,-0.65],  scale:[0.5,1.5,0.5],    morphBase:0.0 },
+    legL: { pos:[-1.2,-4.2, 1.5],     rot:[0.0, 0, 0.4],      scale:[0.6,0.6,1.7],   morphBase:0.0 },
+    legR: { pos:[ 1.2,-4.2, 1.5],     rot:[0.0, 0,-0.4],      scale:[0.6,0.6,1.7],   morphBase:0.0 },
+    pawL: { pos:[-3.1, -2.7, 0.5],     rot:[0.0,0,0.5],        scale:[0.3,0.5,0.4], morphBase:0.0 },
+    pawR: { pos:[ 3.1, -2.7, 0.5],     rot:[0.0,0,-0.5],       scale:[0.3,0.5,0.4], morphBase:0.0 },
+    pawLA:{ pos:[-1.45,-3.8,3.5],   rot:[0.0,0,-0.8],       scale:[0.5,0.8,0.4], morphBase:0.0 },
+    pawRA:{ pos:[ 1.45,-3.8,3.5],   rot:[0.0,0, 0.8],       scale:[0.5,0.8,0.4], morphBase:0.0 },
     };
-    const parts = ['body','head','earL','earR','snout','armL','armR','legL','legR']//,'pawL','pawR','pawLA','pawRA'];
+
+    const teddyPartsLaying = {
+    body: { pos:[ 0.0, -3.5, -1.5],    rot:[1.5 ,0,0],            scale:[1.5, 2.0, 1.3], morphBase:0.0 },
+    head: { pos:[ 0.0, -3.5 ,-5.5],     rot:[1.5,0,0],            scale:[1.3,1.2,1.2],  morphBase:0.0 },
+    earL: { pos:[-1.3, -3.6, -7.2],    rot:[1.5,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
+    earR: { pos:[ 1.3, -3.6, -7.2],    rot:[1.5,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
+    snout:{ pos:[ 0.00, -1.8, -5.4],    rot:[1.5,0,0],            scale:[0.6,0.4,0.7], morphBase:0.0 },
+    armL: { pos:[-1.90, -3.5, -2.5],  rot:[1.6, 0.3, 0.65],  scale:[0.5,1.5,0.5],    morphBase:0.0 },
+    armR: { pos:[ 1.90, -3.5, -2.5],  rot:[1.6,-0.3,-0.65],  scale:[0.5,1.5,0.5],    morphBase:0.0 },
+    legL: { pos:[-1.2,-4.2, 1.5],     rot:[0.0, 0, 0.4],      scale:[0.6,0.6,1.7],   morphBase:0.0 },
+    legR: { pos:[ 1.2,-4.2, 1.5],     rot:[0.0, 0,-0.4],      scale:[0.6,0.6,1.7],   morphBase:0.0 },
+    pawL: { pos:[-3.1, -4.0, -0.5],     rot:[1.5,0,0.5],        scale:[0.3,0.5,0.4], morphBase:0.0 },
+    pawR: { pos:[ 3.1, -4.0, -0.5],     rot:[1.5,0,-0.5],       scale:[0.3,0.5,0.4], morphBase:0.0 },
+    pawLA:{ pos:[-1.45,-3.8,3.5],   rot:[0.0,0,-0.8],       scale:[0.5,0.8,0.4], morphBase:0.0 },
+    pawRA:{ pos:[ 1.45,-3.8,3.5],   rot:[0.0,0, 0.8],       scale:[0.5,0.8,0.4], morphBase:0.0 },
+    };
+
+    const parts = ['body','head','earL','earR','snout','armL','armR','legL','legR','pawL','pawR','pawLA','pawRA'];
+
 
     // --------- Input & camera ---------
     let mouseDown = false, lastX, lastY, cubeRotX = 0, cubeRotY = 0;
@@ -968,7 +999,7 @@
     const clawRoot = buildClawFullTree();
 
 
-    function drawTexturedTeddy(allRotation, modelViewMatrix, teddyBase, parts, teddyParts) {
+    function drawTexturedTeddy(allRotation, modelViewMatrix, teddyBase, parts, teddyParts, wrapper) {
         const s = sphereSets[0];  // first sphere set (has UVs)
 
         // Bind shared sphere buffers once
@@ -992,7 +1023,7 @@
 
         if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 1);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, teddyFurTex);
+        gl.bindTexture(gl.TEXTURE_2D, wrapper);
 
         for (const name of parts) {
             const p = teddyParts[name];
@@ -1009,7 +1040,6 @@
             Mlocal = mat4RotateZ(Mlocal, p.rot[2]);
             Mlocal = mat4Scale(Mlocal, p.scale);
 
-            // ✅ make teddy part live in the same rotating “machine space”
             const M  = multiplyMat4(allRotation, Mlocal);
             const MV = multiplyMat4(modelViewMatrix, M);
             const N  = normalMatrixFromMV(MV);
@@ -1207,9 +1237,15 @@
         }
       }
 
-      // --- draw textured teddy (uses fur texture) ---
-      let teddyBaseT = [7, 30, -8];
-      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseT, parts, teddyParts);
+      // --- draw textured teddy bears (uses fur textures) ---
+      let teddyBasePS = [7, 30, -8];
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBasePS, parts, teddyPartsSitting, teddyFurTexPink);
+
+      let teddyBaseBL = [6, 30, 5];
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseBL, parts, teddyPartsLaying, teddyFurTexBlue);
+
+      let teddyBasePurS = [-7, 30, -8];
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBasePurS, parts, teddyPartsSitting, teddyFurTexPurple);
 
       // --- update claw drop animation ---
       if (armDrop.phase === 'mid') {
