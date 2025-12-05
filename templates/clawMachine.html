@@ -669,12 +669,14 @@
       midMax: 4.0,
       smallMax: 4.0,
       midMin: 0,
-      smallMin: 0
+      smallMin: 0,
+      lowAngle: 0,
+      midAngle: 0
     };
 
     const armDrop = {
       phase: 'idle',
-      speed: 2.5
+      speed: 4.5
     };
 
     const CLAW_BOUNDS = {
@@ -721,7 +723,7 @@
         if (armDrop.phase === 'idle' || armDrop.phase === 'done') {
           armRig.midOffset = 0;
           armRig.smallOffset = 0;
-          armDrop.phase = 'mid';
+          armDrop.phase = 'open';
         }
       });
 
@@ -798,49 +800,139 @@
         };
       }
 
-      const lowClaw = node('group', null, [
-        node('cone', TRS({
-          translate: [-5.0, 34.7, 6.5],
-          rotate: [deg(-50), deg(0), deg(0)],
-          scale: [0.3, 3.0, 0.3]
-        })),
+      function TRS_ClawOpen({  pivot = [0, 0, 0], axis = 'x', getAngle = () => 0 }) {
+        return () => {
+          let M = mat4Identity();
+          const a = getAngle();
+          if (a !== 0) {
+            M = mat4Translate(M, pivot);
 
-        node('cone', TRS_YawAbout({
-          offset: [-6.7, 34.7, 4.3],
-          rotXYZ: [deg(-50), deg(120), deg(0)],
-          scale: [0.3, 3.0, 0.3],
-          pivotY: [-6.7, 41.0, 4.3]
-        })),
+            const rad = deg(a);
+            if (axis === 'x')      M = mat4RotateX(M, rad);
+            else if (axis === 'y') M = mat4RotateY(M, rad);
+            else if (axis === 'z') M = mat4RotateZ(M, rad);
 
-        node('cone', TRS_YawAbout({
-          offset: [-3.5, 34.7, 4.3],
-          rotXYZ: [deg(-50), deg(240), deg(0)],
-          scale: [0.3, 3.0, 0.3],
-          pivotY: [-3.5, 41.0, 4.3]
-        })),
-      ]);
+            M = mat4Translate(M, [-pivot[0], -pivot[1], -pivot[2]]);
+          }
+          return M;
+        };
+      }
+
+      function TRS_ClawOpenSide({pivot = [0, 0, 0], getAngle = () => 0, signX = 1, signZ = 1
+      }) {
+        return () => {
+          let M = mat4Identity();
+          const a = getAngle();
+          if (a !== 0) {
+            const ax = deg(a * signX);
+            const az = deg(a * signZ); 
+
+            M = mat4Translate(M, pivot);
+
+            M = mat4RotateZ(M, az);
+            M = mat4RotateX(M, ax);
+
+            M = mat4Translate(M, [-pivot[0], -pivot[1], -pivot[2]]);
+          }
+          return M;
+        };
+      }
+
+      const lowClawCent = node('group',
+        TRS_ClawOpen({
+            pivot: [-5.0, 36.1, 7.3],
+            axis: 'x',
+            getAngle: () => armRig.lowAngle
+          }),
+          [
+            node('cone', TRS({
+              translate: [-5.0, 34.7, 6.5],
+              rotate: [deg(-50), deg(0), deg(0)],
+              scale: [0.3, 3.0, 0.3]
+            }))
+        ]);
+
+      const lowClawLeft = node('group',
+        TRS_ClawOpenSide({
+            pivot: [-7.2, 36.1, 4.4],
+            getAngle: () => armRig.lowAngle,
+            signX: -0.6, 
+            signZ: 0.9
+          }),
+          [
+            node('cone', TRS_YawAbout({
+              offset: [-6.7, 34.7, 4.3],
+              rotXYZ: [deg(-50), deg(120), deg(0)],
+              scale: [0.3, 3.0, 0.3],
+              pivotY: [-6.7, 41.0, 4.3]
+            }))
+        ]);
+
+      const lowClawRight = node('group',
+        TRS_ClawOpenSide({
+            pivot: [-3.0, 36.1, 4.4],
+            getAngle: () => armRig.lowAngle,
+            signX: -0.6,
+            signZ: -0.9
+          }),
+          [
+            node('cone', TRS_YawAbout({
+              offset: [-3.5, 34.7, 4.3],
+              rotXYZ: [deg(-50), deg(240), deg(0)],
+              scale: [0.3, 3.0, 0.3],
+              pivotY: [-3.5, 41.0, 4.3]
+            }))
+        ]);
+
+      const midClawCent = node('group',
+        TRS_ClawOpen({
+            offset: [0, 0, 0],
+            rotXYZ: [0, 0, 0],
+            scale: [1, 1, 1],
+            getAngle: () => armRig.midAngle
+          }),
+          [
+            node('cyl', TRS({
+              translate: [-5.0, 37.0, 7.6],
+              rotate: [deg(10), deg(0), deg(0)],
+              scale: [0.3, 3.0, 0.3]
+            })), lowClawCent
+        ]);
+
+      const midClawLeft = node('group',
+        TRS_ClawOpen({
+            offset: [0, 0, 0],
+            rotXYZ: [0, 0, 0],
+            scale: [1, 1, 1],
+            getAngle: () => armRig.midAngle
+          }),
+          [
+            node('cyl', TRS_YawAbout({
+              offset: [-7.4, 37.0, 3.9],
+              rotXYZ: [deg(10), deg(120), deg(0)],
+              scale: [0.3, 3.0, 0.3],
+              pivotY: [-7.4, 41.0, 3.9]
+            })), lowClawLeft
+        ]);
+
+      const midClawRight = node('group',
+        TRS_ClawOpen({
+            offset: [0, 0, 0],
+            rotXYZ: [0, 0, 0],
+            scale: [1, 1, 1],
+            getAngle: () => armRig.midAngle
+          }),
+          [
+            node('cyl', TRS_YawAbout({
+              offset: [-2.9, 37.0, 3.9],
+              rotXYZ: [deg(10), deg(240), deg(0)],
+              scale: [0.3, 3.0, 0.3],
+              pivotY: [-2.9, 41.0, 3.9]
+            })), lowClawRight
+        ]);
 
       const midClaw = node('group', null, [
-        node('cyl', TRS({
-          translate: [-5.0, 37.0, 7.6],
-          rotate: [deg(10), deg(0), deg(0)],
-          scale: [0.3, 3.0, 0.3]
-        })),
-
-        node('cyl', TRS_YawAbout({
-          offset: [-7.4, 37.0, 3.9],
-          rotXYZ: [deg(10), deg(120), deg(0)],
-          scale: [0.3, 3.0, 0.3],
-          pivotY: [-7.4, 41.0, 3.9]
-        })),
-
-        node('cyl', TRS_YawAbout({
-          offset: [-2.9, 37.0, 3.9],
-          rotXYZ: [deg(10), deg(240), deg(0)],
-          scale: [0.3, 3.0, 0.3],
-          pivotY: [-2.9, 41.0, 3.9]
-        })), 
-        lowClaw
+        midClawCent, midClawLeft, midClawRight
       ]);
 
       const upClaw = node('group', null, [
@@ -1262,20 +1354,32 @@
       //    home--   go back to starting point 
       //    drop--   open claw above (lower then middle) dropping prize (if any)
 
+      if(armDrop.phase == 'open'){
+        armRig.lowAngle = Math.min(armRig.lowAngle + armDrop.speed * dt, 50);
+        if (armRig.lowAngle >= 50) armDrop.phase = 'mid';
 
-      if (armDrop.phase === 'mid') {
+      } else if (armDrop.phase === 'mid') {
+
         armRig.midOffset = Math.min(armRig.midOffset + armDrop.speed * dt, armRig.midMax);
         if (armRig.midOffset >= armRig.midMax) armDrop.phase = 'small';
+
       } else if (armDrop.phase === 'small') {
+
         armRig.smallOffset = Math.min(armRig.smallOffset + armDrop.speed * dt, armRig.smallMax);
         if (armRig.smallOffset >= armRig.smallMax) armDrop.phase = 'smallR';
+
       } else if(armDrop.phase === 'smallR'){
+
         armRig.smallOffset = Math.max(armRig.smallOffset - armDrop.speed * dt, armRig.smallMin);
         if (armRig.smallOffset <= armRig.smallMin) armDrop.phase = 'midR';
+
       } else if(armDrop.phase === 'midR'){
+
         armRig.midOffset = Math.max(armRig.midOffset - armDrop.speed * dt, armRig.midMin);
         if (armRig.midOffset <= armRig.smallMin) armDrop.phase = 'homeOver';
+
       } else if (armDrop.phase === 'homeOver'){
+
         if (clawPose.pos[0] >= 0){
           clawPose.pos[0] = Math.max(clawPose.pos[0] - armDrop.speed * dt, 0);
           if (clawPose.pos[0] <= armRig.smallMin) armDrop.phase = 'home';
@@ -1283,14 +1387,22 @@
           clawPose.pos[0] = Math.min(clawPose.pos[0] + armDrop.speed * dt, 0);
           if (clawPose.pos[0] >= armRig.smallMin) armDrop.phase = 'home';
         }    
+
       } else if (armDrop.phase === 'home'){
+
         if (clawPose.pos[2] <= 0){
           clawPose.pos[2] = Math.min(clawPose.pos[2] + armDrop.speed * dt, 0);
-          if (clawPose.pos[2] >= armRig.smallMin) armDrop.phase = 'done';
+          if (clawPose.pos[2] >= armRig.smallMin) armDrop.phase = 'drop';
         } else {
           clawPose.pos[2] = Math.max(clawPose.pos[2] - armDrop.speed * dt, 0);
-          if (clawPose.pos[2] <= armRig.smallMin) armDrop.phase = 'done';
+          if (clawPose.pos[2] <= armRig.smallMin) armDrop.phase = 'drop';
         }
+
+      } else if (armDrop.phase === 'drop'){
+
+        armRig.lowAngle = Math.min(armRig.lowAngle + armDrop.speed * dt, 50);
+        if (armRig.lowAngle >= 50) armDrop.phase = 'done';
+
       }
 
       // --- draw claw scene graph ---
