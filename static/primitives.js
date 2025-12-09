@@ -1,7 +1,7 @@
 
 
 // rectangle block, modified original cube arrays
-function buildBlock(width=1, height=1, depth=1, solidColor=[0.66,0.89,0.63]) {
+function buildBlock(width=1, height=1, depth=1, solidColor=[0.173,0.067,0.310]) {
   const hx=width*0.5, hy=height*0.5, hz=depth*0.5;
   const P=[], N=[], C=[];
   const face=(nx,ny,nz, c)=>{ for (const [x,y,z] of c){ P.push(x,y,z); N.push(nx,ny,nz); C.push(...solidColor);}};

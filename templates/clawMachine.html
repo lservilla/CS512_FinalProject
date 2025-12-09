@@ -659,6 +659,13 @@
       "/static/stylized-animal-fur-unity/purpleFur.png"
     );
 
+    const teddyFurColors = [Math.floor(Math.random() * 4), Math.floor(Math.random() * 4), Math.floor(Math.random() * 4)];
+    const possibleBearColors = [teddyFurTexBlue, teddyFurTexBrown, teddyFurTexPink, teddyFurTexPurple];
+
+    let teddyBasePS = [7, 30, -8];
+    let teddyBasePurS = [-7, 30, -8];
+    let teddyBaseBL = [6, 30, 5];
+
     const teddyPawPadsTex = loadTexture(
       "/static/brown-leather-unity/brown-leather_albedo.png"
     )
@@ -1477,21 +1484,22 @@
       }
 
       // --- draw textured teddy bears (uses fur textures) ---
-      let teddyBasePS = [7, 30, -8];
-      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBasePS, parts, teddyPartsSitting, teddyFurTexPink);
 
-      let teddyBaseBL = [6, 30, 5];
-      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseBL, parts, teddyPartsLaying, teddyFurTexBlue);
+      // let teddyBasePS = [7, 30, -8];
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBasePS, parts, teddyPartsSitting, possibleBearColors[teddyFurColors[0]]);
 
-      let teddyBasePurS = [-7, 30, -8];
-      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBasePurS, parts, teddyPartsSitting, teddyFurTexPurple);
+      // let teddyBaseBL = [6, 30, 5];
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseBL, parts, teddyPartsLaying, possibleBearColors[teddyFurColors[1]]);
+
+      // let teddyBasePurS = [-7, 30, -8];
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBasePurS, parts, teddyPartsSitting, possibleBearColors[teddyFurColors[2]]);
 
       // --- update claw drop animation ---
 
       // Claw phases and visual
       //    open-- open claw above (lower then middle)
       //    mid-- drop middle section
-      //    small--  drop smallest section
+      //    small--  drop smallest section 
       //    close--  close claw on object (middle then lower)
       //    smallR-- raise smallest section
       //    midR--   raise middle section
@@ -1508,6 +1516,19 @@
         if (armRig.midOffset >= armRig.midMax) armDrop.phase = 'small';
 
       } else if (armDrop.phase === 'small') {
+
+        // console.log(clawPose.pos[0]); // between 0 and -4 for left bear
+        // console.log(clawPose.pos[2]); // -11.5 
+
+        // console.log("ted pose", teddyBasePurS[0]) // -7
+        // console.log("ted pose", teddyBasePurS[2]) // -8
+
+        if (clawPose.pos[0] <= 0 && clawPose.pos[2] <= -11.5){
+          armDrop.phase = 'close';
+        } else if (clawPose.pos[0] >= 11 && clawPose.pos[2] <= -11.5){
+          armDrop.phase = 'close';
+        }
+
 
         armRig.smallOffset = Math.min(armRig.smallOffset + armDrop.speed * dt, armRig.smallMax);
         if (armRig.smallOffset >= armRig.smallMax) armDrop.phase = 'close';
