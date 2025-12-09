@@ -248,3 +248,118 @@ function buildMaze(){
   ];
   return maze;
 }
+
+//pac-man robot geometry
+
+function createRobot(size) {
+    const pos=[], nrm=[], tex=[];
+    
+    // Helper to add a cube
+    function addCube(cx, cy, cz, sx, sy, sz) {
+        const faces = [
+            // Front
+            [[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1],[0,0,1]],
+            // Back
+            [[1,-1,-1],[-1,-1,-1],[-1,1,-1],[1,1,-1],[0,0,-1]],
+            // Top
+            [[-1,1,1],[1,1,1],[1,1,-1],[-1,1,-1],[0,1,0]],
+            // Bottom
+            [[-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,1],[0,-1,0]],
+            // Right
+            [[1,-1,1],[1,-1,-1],[1,1,-1],[1,1,1],[1,0,0]],
+            // Left
+            [[-1,-1,-1],[-1,-1,1],[-1,1,1],[-1,1,-1],[-1,0,0]]
+        ];
+        
+        faces.forEach(face => {
+            const [v0,v1,v2,v3,n] = face;
+            // Triangle 1
+            pos.push(cx+v0[0]*sx*0.5, cy+v0[1]*sy*0.5, cz+v0[2]*sz*0.5);
+            pos.push(cx+v1[0]*sx*0.5, cy+v1[1]*sy*0.5, cz+v1[2]*sz*0.5);
+            pos.push(cx+v2[0]*sx*0.5, cy+v2[1]*sy*0.5, cz+v2[2]*sz*0.5);
+            // Triangle 2
+            pos.push(cx+v0[0]*sx*0.5, cy+v0[1]*sy*0.5, cz+v0[2]*sz*0.5);
+            pos.push(cx+v2[0]*sx*0.5, cy+v2[1]*sy*0.5, cz+v2[2]*sz*0.5);
+            pos.push(cx+v3[0]*sx*0.5, cy+v3[1]*sy*0.5, cz+v3[2]*sz*0.5);
+            
+            for(let i=0;i<6;i++) {
+                nrm.push(n[0], n[1], n[2]);
+                tex.push(0.5, 0.5);
+            }
+        });
+    }
+    
+    // Body (main cube)
+    addCube(0, 0, 0, size*0.8, size*0.9, size*0.6);
+    
+    // Head (smaller cube on top)
+    addCube(0, size*0.55, 0, size*0.6, size*0.5, size*0.5);
+    
+    // Eyes 
+    addCube(-size*0.15, size*0.6, size*0.26, size*0.15, size*0.15, size*0.1);
+    addCube(size*0.15, size*0.6, size*0.26, size*0.15, size*0.15, size*0.1);
+    
+    // Arms
+    addCube(-size*0.5, 0, 0, size*0.25, size*0.7, size*0.25);
+    addCube(size*0.5, 0, 0, size*0.25, size*0.7, size*0.25);
+    
+    // Legs
+    addCube(-size*0.2, -size*0.6, 0, size*0.25, size*0.5, size*0.25);
+    addCube(size*0.2, -size*0.6, 0, size*0.25, size*0.5, size*0.25);
+    
+    // Antenna
+    addCube(0, size*0.9, 0, size*0.08, size*0.2, size*0.08);
+    addCube(0, size*1.05, 0, size*0.15, size*0.1, size*0.15);
+    
+    return {pos:new Float32Array(pos), nrm:new Float32Array(nrm), tex:new Float32Array(tex), cnt:pos.length/3};
+}
+
+
+function createSphere(r, seg) {
+    const pos=[], nrm=[], tex=[], idx=[];
+    for(let lat=0;lat<=seg;lat++) {
+        const theta=lat*Math.PI/seg, st=Math.sin(theta), ct=Math.cos(theta);
+        for(let lon=0;lon<=seg;lon++) {
+            const phi=lon*2*Math.PI/seg, sp=Math.sin(phi), cp=Math.cos(phi);
+            const x=cp*st, y=ct, z=sp*st;
+            pos.push(r*x, r*y, r*z);
+            nrm.push(x, y, z);
+            tex.push(lon/seg, lat/seg);
+        }
+    }
+    for(let lat=0;lat<seg;lat++) {
+        for(let lon=0;lon<seg;lon++) {
+            const f=lat*(seg+1)+lon, s=f+seg+1;
+            idx.push(f,s,f+1, s,s+1,f+1);
+        }
+    }
+    const ePos=[], eNrm=[], eTex=[];
+    for(let i of idx) {
+        ePos.push(pos[i*3], pos[i*3+1], pos[i*3+2]);
+        eNrm.push(nrm[i*3], nrm[i*3+1], nrm[i*3+2]);
+        eTex.push(tex[i*2], tex[i*2+1]);
+    }
+    return {pos:new Float32Array(ePos), nrm:new Float32Array(eNrm), tex:new Float32Array(eTex), cnt:idx.length};
+}
+
+
+function createCube() {
+    const p = [-0.5,-0.5,-0.5, 0.5,-0.5,-0.5, 0.5,0.5,-0.5, -0.5,0.5,-0.5,
+               -0.5,-0.5,0.5, 0.5,-0.5,0.5, 0.5,0.5,0.5, -0.5,0.5,0.5];
+    const idx = [0,1,2,0,2,3, 4,6,5,4,7,6, 4,5,1,4,1,0, 3,2,6,3,6,7, 1,5,6,1,6,2, 4,0,3,4,3,7];
+    const pos=[], nrm=[], tex=[];
+    for(let i=0;i<idx.length;i+=3) {
+        const i0=idx[i]*3, i1=idx[i+1]*3, i2=idx[i+2]*3;
+        const v1=[p[i1]-p[i0], p[i1+1]-p[i0+1], p[i1+2]-p[i0+2]];
+        const v2=[p[i2]-p[i0], p[i2+1]-p[i0+1], p[i2+2]-p[i0+2]];
+        const n=norm(cross(v1,v2));
+        for(let j=0;j<3;j++) {
+            const vi=idx[i+j]*3;
+            pos.push(p[vi], p[vi+1], p[vi+2]);
+            nrm.push(n[0], n[1], n[2]);
+            // Texture coordinates based on position
+            tex.push(p[vi]+0.5, p[vi+2]+0.5);
+        }
+    }
+    return {pos:new Float32Array(pos), nrm:new Float32Array(nrm), tex:new Float32Array(tex), cnt:idx.length};
+}

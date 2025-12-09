@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>3D PAC MAN</title>
+<style>
+    body {
+        position: relative;
+        background: radial-gradient(circle at 50% 30%, #6e1313 0%, #525151 60%, #000f15 100%);
+        background-attachment: fixed;
+        color: #ddd;
+        font-family: monospace;
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+    }
+
+    h1 {
+        font-size: 20px;
+        letter-spacing: 4px;
+        color: rgb(177, 255, 255);
+        text-shadow: 0 0 8px rgb(68, 249, 255);
+        margin-bottom: 16px;
+    }
+
+    canvas {
+        display: block;
+        margin: 24px auto;
+        border: 1px solid #8feeff;
+        background: #111;
+        width: 800px;
+        height: 600px;
+        cursor: grab;
+    }
+    
+    canvas:active {
+        cursor: grabbing;
+    }
+
+    .btn {
+        background: #222;
+        color: #fff;
+        border: 1px solid rgb(58, 255, 255);
+        border-radius: 8px;
+        padding: 14px 28px;
+        font-size: 16px;
+        cursor: pointer;
+    }
+
+    .btn:hover {
+        background: rgb(58, 255, 255);
+        color: #111;
+    }
+
+    .controlsWrapper {
+        display: flex;
+        justify-content: center;
+        align-items: center; 
+        gap: 60px;               
+    }
+
+    .lowerControls {
+        display: grid;
+        grid-template-columns: 44px 44px 44px;
+        grid-template-rows: 44px 44px 44px;
+        gap: 10px;
+    }
+
+    #btnUp { grid-column: 2; grid-row: 1; }
+    #btnLeft { grid-column: 1; grid-row: 2; }
+    #btnRight { grid-column: 3; grid-row: 2; }
+    #btnDown { grid-column: 2; grid-row: 3; }
+
+    #gameInfo {
+        display: flex;
+        gap: 40px;
+        margin-bottom: 20px;
+        color: white;
+        font-size: 24px;
+        font-weight: bold;
+    }
+
+    #gameOver {
+        display: none;
+        margin-top: 20px;
+        padding: 20px;
+        background: rgba(255, 0, 0, 0.8);
+        border-radius: 10px;
+        color: white;
+        font-size: 24px;
+        font-weight: bold;
+    }
+</style>
+</head>
+<body>
+     <h1>🎮 3D PAC MAN 🎮</h1>
+    <div id="gameInfo">
+        <div>Score: <span id="score">0</span></div>
+        <div>Lives: <span id="lives">3</span></div>
+        <div style="font-size: 14px;">Camera: Drag to rotate | Scroll to zoom</div>
+    </div>
+    <canvas id="glcanvas" width="800" height="600"></canvas>
+    <div id="gameOver">
+        GAME OVER!<br>
+        <button class="btn" onclick="location.reload()">Restart</button>
+    </div>
+
+    <div class="controlsWrapper">
+        <button onclick="location.reload()" class="btn">Reset</button>
+        <div class="lowerControls">
+            <button id="btnUp" class="btn">▲</button>
+            <button id="btnLeft" class="btn">◀</button>
+            <button id="btnRight" class="btn">▶</button>
+            <button id="btnDown" class="btn">▼</button>
+        </div>
+    </div>
+
+<script id="vs" type="x-shader/x-vertex">#version 300 es
+in vec3 aPosition;
+in vec3 aNormal;
+in vec2 aTexCoord;
+uniform mat4 uModel;
+uniform mat4 uView;
+uniform mat4 uProj;
+out vec3 vNormal;
+out vec3 vPos;
+out vec2 vTexCoord;
+
+void main() {
+    vec4 worldPos = uModel * vec4(aPosition, 1.0);
+    vPos = worldPos.xyz;
+    vNormal = mat3(uModel) * aNormal;
+    vTexCoord = aTexCoord;
+    gl_Position = uProj * uView * worldPos;
+}
+</script>
+
+<script id="fs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+in vec3 vNormal;
+in vec3 vPos;
+in vec2 vTexCoord;
+uniform vec4 uColor;
+uniform vec3 uLight;
+uniform int uUseTexture;
+out vec4 fragColor;
+
+void main() {
+    vec3 norm = normalize(vNormal);
+    vec3 lightDir = normalize(uLight - vPos);
+    float diff = max(dot(norm, lightDir), 0.0);
+    float amb = 0.4;
+    
+    vec4 baseColor = uColor;
+    
+    if(uUseTexture == 1) {
+        // Grass texture procedural generation
+        vec2 uv = vTexCoord * 8.0;
+        float grassPattern = fract(sin(dot(floor(uv), vec2(12.9898, 78.233))) * 43758.5453);
+        vec3 grassBase = vec3(0.2, 0.5, 0.1);
+        vec3 grassVariation = vec3(0.15, 0.4, 0.08);
+        baseColor = vec4(mix(grassBase, grassVariation, grassPattern), 1.0);
+        //blade details
+        float blades = fract(sin(dot(uv * 20.0, vec2(12.9898, 78.233))) * 43758.5453);
+        if(blades > 0.7) {
+            baseColor.rgb *= 0.8;
+        }
+    }
+    
+    fragColor = vec4(baseColor.rgb * (amb + diff * 0.6), baseColor.a);
+}
+</script>
+  <script src="{{ url_for('static', filename='transformations.js') }}"></script>
+  <script src="{{ url_for('static', filename='primitives.js') }}"></script>
+<script>
+const canvas = document.getElementById("glcanvas");
+const gl = canvas.getContext("webgl2");
+if (!gl) alert("WebGL2 not supported");
+
+//test depth of 3d
+gl.enable(gl.DEPTH_TEST);
+
+//create shader
+function createShader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return s;
+}
+//get vertex and fragment shader code 
+const vs = createShader(gl.VERTEX_SHADER, document.getElementById("vs").textContent);
+const fs = createShader(gl.FRAGMENT_SHADER, document.getElementById("fs").textContent);
+const prog = gl.createProgram();
+gl.attachShader(prog, vs);
+gl.attachShader(prog, fs);
+gl.linkProgram(prog);
+
+
+const aPos = gl.getAttribLocation(prog, 'aPosition');
+const aNorm = gl.getAttribLocation(prog, 'aNormal');
+const aTexCoord = gl.getAttribLocation(prog, 'aTexCoord');
+const uModel = gl.getUniformLocation(prog, 'uModel');
+const uView = gl.getUniformLocation(prog, 'uView');
+const uProj = gl.getUniformLocation(prog, 'uProj');
+const uColor = gl.getUniformLocation(prog, 'uColor');
+const uLight = gl.getUniformLocation(prog, 'uLight');
+const uUseTexture = gl.getUniformLocation(prog, 'uUseTexture');
+
+
+function perspective(fov, aspect, near, far) {
+    const f = 1 / Math.tan(fov / 2);
+    return [f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];
+}
+
+function lookAt(eye, center, up) {
+    const z = norm([eye[0]-center[0], eye[1]-center[1], eye[2]-center[2]]);
+    const x = norm(cross(up, z));
+    const y = cross(z, x);
+    return [x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0, -dot(x,eye),-dot(y,eye),-dot(z,eye),1];
+}
+
+function cross(a,b) {
+    return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+}
+
+function dot(a,b) {
+    return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+}
+
+function norm(v) {
+    const l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+    return l>0 ? [v[0]/l,v[1]/l,v[2]/l] : [0,0,0];
+}
+
+function translate(x,y,z) {
+    return [1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1];
+}
+
+function scale(x,y,z) {
+    return [x,0,0,0, 0,y,0,0, 0,0,z,0, 0,0,0,1];
+}
+
+function rotateY(angle) {
+    const c = Math.cos(angle), s = Math.sin(angle);
+    return [c,0,s,0, 0,1,0,0, -s,0,c,0, 0,0,0,1];
+}
+
+function mult(a,b) {
+    const r = Array(16);
+    for(let i=0;i<4;i++) {
+        for(let j=0;j<4;j++) {
+            r[i*4+j]=0;
+            for(let k=0;k<4;k++) r[i*4+j]+=a[i*4+k]*b[k*4+j];
+        }
+    }
+    return r;
+}
+
+
+const cube = createCube();
+const sphere = createSphere(0.4, 16);
+const robotShape = createRobot(0.7);
+
+function createBuf(data) {
+    const buf=gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    return buf;
+}
+
+const cubeBuf = {pos:createBuf(cube.pos), nrm:createBuf(cube.nrm), tex:createBuf(cube.tex), cnt:cube.cnt};
+const sphereBuf = {pos:createBuf(sphere.pos), nrm:createBuf(sphere.nrm), tex:createBuf(sphere.tex), cnt:sphere.cnt};
+const robotBuf = {pos:createBuf(robotShape.pos), nrm:createBuf(robotShape.nrm), tex:createBuf(robotShape.tex), cnt:robotShape.cnt};
+
+const maze = buildMaze();
+//Initial state of game (pac-man, robots and pallets)
+const state = {
+    pacman: {x:1, y:1, dir:0, nextDir:0},
+    ghosts: [
+        {x:9, y:9, dir:0, color:[1,0,0,1], speed:0.8, lastChange:0},
+        {x:9, y:11, dir:1, color:[1,0.7,0.8,1], speed:0.75, lastChange:0},
+        {x:9, y:9, dir:2, color:[0,1,1,1], speed:0.85, lastChange:0},
+        {x:9, y:11, dir:3, color:[1,0.6,0,1], speed:0.7, lastChange:0}
+    ],
+    dots: [],
+    pellets: [],
+    score: 0,
+    lives: 3,
+    frightened: false,
+    frightTimer: 0,
+    over: false,
+    camera: {
+        angle: 0,
+        distance: 25,
+        height: 25
+    },
+    mouse: {
+        isDragging: false,
+        lastX: 0,
+        lastY: 0
+    }
+};
+
+for(let y=0; y<maze.length; y++) {
+    for(let x=0; x<maze[0].length; x++) {
+        if(maze[y][x]===1) state.dots.push({x,y});
+        else if(maze[y][x]===3) state.pellets.push({x,y});
+    }
+}
+
+function canMove(x,y) {
+    const mx=Math.round(x), my=Math.round(y);
+    if(my<0||my>=maze.length||mx<0||mx>=maze[0].length) return false;
+    return maze[my][mx]!==0;
+}
+
+function draw(buf, model, color, useTexture = 0) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
+    
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.nrm);
+    gl.enableVertexAttribArray(aNorm);
+    gl.vertexAttribPointer(aNorm, 3, gl.FLOAT, false, 0, 0);
+    
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.tex);
+    gl.enableVertexAttribArray(aTexCoord);
+    gl.vertexAttribPointer(aTexCoord, 2, gl.FLOAT, false, 0, 0);
+    
+    gl.uniformMatrix4fv(uModel, false, model);
+    gl.uniform4fv(uColor, color);
+    gl.uniform1i(uUseTexture, useTexture);
+    gl.drawArrays(gl.TRIANGLES, 0, buf.cnt);
+}
+
+let lastT=0;
+function loop(t) {
+    if(state.over) return;
+    
+    const dt = Math.min((t-lastT)/1000, 0.05);
+    lastT = t;
+    
+    if(state.pacman.dir !== state.pacman.nextDir) {
+        const dx=[0.5,0,-0.5,0][state.pacman.nextDir];
+        const dy=[0,0.5,0,-0.5][state.pacman.nextDir];
+        if(canMove(state.pacman.x+dx, state.pacman.y+dy)) {
+            state.pacman.dir = state.pacman.nextDir;
+        }
+    }
+    
+    const spd = 3*dt;
+    const dx=[spd,0,-spd,0][state.pacman.dir];
+    const dy=[0,spd,0,-spd][state.pacman.dir];
+    
+    // Check the new position before moving
+    let newX=state.pacman.x+dx, newY=state.pacman.y+dy;
+    
+    // Clamp to valid maze boundaries
+    if(newX < 0) newX = 0;
+    if(newX >= maze[0].length) newX = maze[0].length - 1;
+    if(newY < 0) newY = 0;
+    if(newY >= maze.length) newY = maze.length - 1;
+    
+    if(canMove(newX, newY)) {
+        state.pacman.x=newX;
+        state.pacman.y=newY;
+    }
+    
+    const px=Math.round(state.pacman.x), py=Math.round(state.pacman.y);
+    
+    state.dots = state.dots.filter(d => {
+        if(d.x===px && d.y===py) {
+            state.score+=10;
+            document.getElementById('score').textContent=state.score;
+            return false;
+        }
+        return true;
+    });
+    
+    state.pellets = state.pellets.filter(p => {
+        if(p.x===px && p.y===py) {
+            state.score+=50;
+            state.frightened=true;
+            state.frightTimer=6;
+            document.getElementById('score').textContent=state.score;
+            return false;
+        }
+        return true;
+    });
+    
+    if(state.dots.length===0 && state.pellets.length===0) {
+        state.over=true;
+        document.getElementById('gameOver').innerHTML=`
+            <div style="color:#0f0">YOU WIN!</div>
+            <div>Score: ${state.score}</div>
+            <button class="btn" onclick="location.reload()">Play Again</button>
+        `;
+        document.getElementById('gameOver').style.display='block';
+        return;
+    }
+    
+    if(state.frightened) {
+        state.frightTimer-=dt;
+        if(state.frightTimer<=0) state.frightened=false;
+    }
+    
+    state.ghosts.forEach(g => {
+        g.lastChange+=dt;
+        if(g.lastChange>0.3) {
+            const dirs=[];
+            for(let d=0;d<4;d++) {
+                const tdx=[0.5,0,-0.5,0][d], tdy=[0,0.5,0,-0.5][d];
+                if(canMove(g.x+tdx, g.y+tdy)) dirs.push(d);
+            }
+            if(!state.frightened && dirs.length>1) {
+                let best=g.dir, bestD=Infinity;
+                dirs.forEach(d => {
+                    const tdx=[1,0,-1,0][d], tdy=[0,1,0,-1][d];
+                    const tx=g.x+tdx, ty=g.y+tdy;
+                    const dist=Math.abs(tx-state.pacman.x)+Math.abs(ty-state.pacman.y);
+                    if(dist<bestD) {
+                        bestD=dist;
+                        best=d;
+                    }
+                });
+                g.dir=best;
+            } else if(dirs.length>0) {
+                g.dir=dirs[Math.floor(Math.random()*dirs.length)];
+            }
+            g.lastChange=0;
+        }
+        
+        const gspd = state.frightened ? spd*0.5 : spd*g.speed;
+        const gdx=[gspd,0,-gspd,0][g.dir], gdy=[0,gspd,0,-gspd][g.dir];
+        const gnx=g.x+gdx, gny=g.y+gdy;
+        if(canMove(gnx, gny)) {
+            g.x=gnx;
+            g.y=gny;
+        }
+    });
+    
+    state.ghosts.forEach(g => {
+        const dist=Math.sqrt((g.x-state.pacman.x)**2+(g.y-state.pacman.y)**2);
+        if(dist<0.6) {
+            if(state.frightened) {
+                g.x=9; g.y=10;
+                state.score+=200;
+                document.getElementById('score').textContent=state.score;
+            } else {
+                state.lives--;
+                document.getElementById('lives').textContent=state.lives;
+                if(state.lives<=0) {
+                    state.over=true;
+                    document.getElementById('gameOver').style.display='block';
+                } else {
+                    state.pacman.x=1;
+                    state.pacman.y=1;
+                    state.pacman.dir=0;
+                }
+            }
+        }
+    });
+    
+    gl.viewport(0,0,canvas.width,canvas.height);
+    gl.clearColor(0,0,0,1);
+    gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    
+    gl.useProgram(prog);
+    
+    const proj = perspective(Math.PI/4, canvas.width/canvas.height, 0.1, 100);
+    
+    // Calculate camera position based on angle and distance
+    const camX = 9.5 + Math.cos(state.camera.angle) * state.camera.distance;
+    const camZ = 10 + Math.sin(state.camera.angle) * state.camera.distance;
+    const view = lookAt([camX, state.camera.height, camZ], [9.5,0,10], [0,1,0]);
+    
+    gl.uniformMatrix4fv(uProj, false, proj);
+    gl.uniformMatrix4fv(uView, false, view);
+    gl.uniform3fv(uLight, [15,30,15]);
+    
+    for(let y=0;y<maze.length;y++) {
+        for(let x=0;x<maze[0].length;x++) {
+            if(maze[y][x]===0) {
+                const m = mult(translate(x,0.5,y), scale(1,1,1));
+                draw(cubeBuf, m, [108, 173, 24,1], 1); // Use grass texture
+            }
+        }
+    }
+    
+    state.dots.forEach(d => {
+        const m = mult(translate(d.x,0.1,d.y), scale(0.15,0.15,0.15));
+        draw(sphereBuf, m, [1,0.9,0.7,1]);
+    });
+    
+    state.pellets.forEach(p => {
+        const m = mult(translate(p.x,0.2,p.y), scale(0.3,0.3,0.3));
+        draw(sphereBuf, m, [1,1,1,1]);
+    });
+    
+    const pm = mult(mult(translate(state.pacman.x,0.7,state.pacman.y), rotateY([0, Math.PI/2, Math.PI, -Math.PI/2][state.pacman.dir])), scale(1.2,1.2,1.2));
+    draw(robotBuf, pm, [1,0.9,0,1]);
+    
+    state.ghosts.forEach(g => {
+        const col = state.frightened ? [0.1,0.1,0.8,1] : g.color;
+        const gm = mult(translate(g.x,0.7,g.y), scale(1.0,1.0,1.0));
+        draw(sphereBuf, gm, col);
+    });
+    
+    requestAnimationFrame(loop);
+}
+
+document.addEventListener('keydown', e => {
+    if(e.key==='ArrowRight') state.pacman.nextDir=0;
+    if(e.key==='ArrowDown') state.pacman.nextDir=1;
+    if(e.key==='ArrowLeft') state.pacman.nextDir=2;
+    if(e.key==='ArrowUp') state.pacman.nextDir=3;
+});
+
+// Mouse controls for camera
+canvas.addEventListener('mousedown', e => {
+    state.mouse.isDragging = true;
+    state.mouse.lastX = e.clientX;
+    state.mouse.lastY = e.clientY;
+});
+
+canvas.addEventListener('mouseup', () => {
+    state.mouse.isDragging = false;
+});
+
+canvas.addEventListener('mouseleave', () => {
+    state.mouse.isDragging = false;
+});
+
+canvas.addEventListener('mousemove', e => {
+    if(!state.mouse.isDragging) return;
+    
+    const deltaX = e.clientX - state.mouse.lastX;
+    const deltaY = e.clientY - state.mouse.lastY;
+    
+    // Rotate camera with horizontal mouse movement
+    state.camera.angle += deltaX * 0.01;
+    
+    // Adjust height with vertical mouse movement
+    state.camera.height = Math.max(5, Math.min(50, state.camera.height - deltaY * 0.1));
+    
+    state.mouse.lastX = e.clientX;
+    state.mouse.lastY = e.clientY;
+});
+
+// Mouse wheel for zoom
+canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    state.camera.distance = Math.max(10, Math.min(50, state.camera.distance + e.deltaY * 0.05));
+});
+
+document.getElementById('btnLeft').onclick = () => state.pacman.nextDir=2;
+document.getElementById('btnRight').onclick = () => state.pacman.nextDir=0;
+document.getElementById('btnDown').onclick = () => state.pacman.nextDir=1;
+document.getElementById('btnUp').onclick = () => state.pacman.nextDir=3;
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

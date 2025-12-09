@@ -40,5 +40,11 @@ def pacMan():
         "pacMan.html"
     )
 
+@app.route("/pacMan3D")
+def pacMan3D():
+    return render_template(
+        "pacMan3D.html"
+    )
+
 if __name__ == "__main__":
     app.run(debug=True)
