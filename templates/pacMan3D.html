@@ -31,7 +31,7 @@
         display: block;
         margin: 24px auto;
         border: 1px solid #8feeff;
-        background: #111;
+        background: #000;
         width: 800px;
         height: 600px;
         cursor: grab;
@@ -119,6 +119,31 @@
         </div>
     </div>
 
+<script id="bg-vs" type="x-shader/x-vertex">#version 300 es
+in vec2 aPosition;
+out vec2 vTexCoord;
+
+void main() {
+    vTexCoord = aPosition * 0.5 + 0.5;
+    gl_Position = vec4(aPosition, 0.999, 1.0);
+}
+</script>
+
+<script id="bg-fs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+in vec2 vTexCoord;
+uniform sampler2D uTexture;
+uniform int uHasTexture;
+out vec4 fragColor;
+
+void main() {
+    if(uHasTexture == 1) {
+        fragColor = texture(uTexture, vTexCoord);
+    } else {
+        fragColor = vec4(1.0, 1.0, 1.0, 1.0);
+    }
+}
+</script>
 <script id="vs" type="x-shader/x-vertex">#version 300 es
 in vec3 aPosition;
 in vec3 aNormal;
@@ -199,6 +224,41 @@ gl.attachShader(prog, vs);
 gl.attachShader(prog, fs);
 gl.linkProgram(prog);
 
+// Background program
+const bgVs = createShader(gl.VERTEX_SHADER, document.getElementById("bg-vs").textContent);
+const bgFs = createShader(gl.FRAGMENT_SHADER, document.getElementById("bg-fs").textContent);
+const bgProg = gl.createProgram();
+gl.attachShader(bgProg, bgVs);
+gl.attachShader(bgProg, bgFs);
+gl.linkProgram(bgProg);
+
+const bgPosLoc = gl.getAttribLocation(bgProg, 'aPosition');
+const bgTexLoc = gl.getUniformLocation(bgProg, 'uTexture');
+const bgHasTexLoc = gl.getUniformLocation(bgProg, 'uHasTexture');
+
+// Create background quad
+const bgQuad = new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]);
+const bgBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, bgBuf);
+gl.bufferData(gl.ARRAY_BUFFER, bgQuad, gl.STATIC_DRAW);
+
+// Load background texture
+let bgTexture = null;
+let hasBackgroundTexture = false;
+const bgImage = new Image();
+bgImage.crossOrigin = "anonymous";
+bgImage.onload = function() {
+    bgTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, bgTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bgImage);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    hasBackgroundTexture = true;
+};
+
+bgImage.src = "/static/backgroundImage/space.jpg";
 
 const aPos = gl.getAttribLocation(prog, 'aPosition');
 const aNorm = gl.getAttribLocation(prog, 'aNormal');
@@ -486,7 +546,7 @@ function loop(t) {
         for(let x=0;x<maze[0].length;x++) {
             if(maze[y][x]===0) {
                 const m = mult(translate(x,0.5,y), scale(1,1,1));
-                draw(cubeBuf, m, [108, 173, 24,1], 1); // Use grass texture
+                draw(cubeBuf, m, [0.1,0.1,0.8,1], 1); // Use grass texture
             }
         }
     }
