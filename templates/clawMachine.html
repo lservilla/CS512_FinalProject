@@ -662,9 +662,12 @@
     const teddyFurColors = [Math.floor(Math.random() * 4), Math.floor(Math.random() * 4), Math.floor(Math.random() * 4)];
     const possibleBearColors = [teddyFurTexBlue, teddyFurTexBrown, teddyFurTexPink, teddyFurTexPurple];
 
-    let teddyBasePS = [7, 30, -8];
-    let teddyBasePurS = [-7, 30, -8];
+    let teddyBaseLeftS = [-7, 30, -8];
+    let leftTeddyGrab = 0;
+    let teddyBaseRightS = [7, 30, -8];
+    let rightTeddyGrab = 0; 
     let teddyBaseBL = [6, 30, 5];
+    let layingTeddyGrab = 0; 
 
     const teddyPawPadsTex = loadTexture(
       "/static/brown-leather-unity/brown-leather_albedo.png"
@@ -1380,10 +1383,10 @@
       drawBlock([5, 10, 5], [10, 20, 10]);
       drawBlock([-9.5, 10, 5], [1, 20, 10]);
 
-      drawBlock([-9.5, 24.5, 5], [1, 10, 10]);
-      drawBlock([0.5, 24.5, 5], [1, 10, 10]);
-      drawBlock([-4.5, 24.5, -0.5], [11, 10, 1]);
-      drawBlock([-4.5, 24.5, 9.5], [11, 10, 1]);
+      drawBlock([-9.5, 22.5, 5], [1, 5, 10]);
+      drawBlock([0.5, 22.5, 5], [1, 5, 10]);
+      drawBlock([-4.5, 22.5, -0.5], [11, 5, 1]);
+      drawBlock([-4.5, 22.5, 9.5], [11, 5, 1]);
 
       drawBlock([-4.5, 17.5, 9.5], [10, 5, 1]);
 
@@ -1486,13 +1489,13 @@
       // --- draw textured teddy bears (uses fur textures) ---
 
       // let teddyBasePS = [7, 30, -8];
-      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBasePS, parts, teddyPartsSitting, possibleBearColors[teddyFurColors[0]]);
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseLeftS, parts, teddyPartsSitting, possibleBearColors[teddyFurColors[0]]);
 
       // let teddyBaseBL = [6, 30, 5];
       drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseBL, parts, teddyPartsLaying, possibleBearColors[teddyFurColors[1]]);
 
       // let teddyBasePurS = [-7, 30, -8];
-      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBasePurS, parts, teddyPartsSitting, possibleBearColors[teddyFurColors[2]]);
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseRightS, parts, teddyPartsSitting, possibleBearColors[teddyFurColors[2]]);
 
       // --- update claw drop animation ---
 
@@ -1517,14 +1520,10 @@
 
       } else if (armDrop.phase === 'small') {
 
-        // console.log(clawPose.pos[0]); // between 0 and -4 for left bear
-        // console.log(clawPose.pos[2]); // -11.5 
-
-        // console.log("ted pose", teddyBasePurS[0]) // -7
-        // console.log("ted pose", teddyBasePurS[2]) // -8
-
+        // Checking for sitting teddy intersection 
         if (clawPose.pos[0] <= 0 && clawPose.pos[2] <= -11.5){
           armDrop.phase = 'close';
+
         } else if (clawPose.pos[0] >= 11 && clawPose.pos[2] <= -11.5){
           armDrop.phase = 'close';
         }
