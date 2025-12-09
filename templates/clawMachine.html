@@ -143,7 +143,7 @@
       grid-row: 3;
     }
 
-    #video{
+    .video{
         position:fixed;
         left:0;
         top:0;
@@ -196,7 +196,9 @@
         </div>
     </div>
 
-    <video id="video" src="{{ video_url }}?v={{ cache_bust }}" autoplay loop muted playsinline></video>
+    <video id="video1" class="video" src="{{ video_url_1 }}?v={{ cache_bust }}" autoplay loop muted playsinline></video>
+    <video id="video2" class="video" src="{{ video_url_2 }}?v={{ cache_bust }}" autoplay loop muted playsinline></video>
+
 
     <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
     in vec3 aPosition;
@@ -226,7 +228,6 @@
     }
   </script>
 
-  <!-- Fragment Shader (WebGL2) -->
   <script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
     precision mediump float;
 
@@ -249,6 +250,8 @@
 
     out vec4 fragColor;
 
+
+
     void main() {
       vec3 N = normalize(vNormalVS);
       vec3 L = normalize(-uLightDirVS);
@@ -270,12 +273,12 @@
       t = smoothstep(0.0, 1.0, t);                       
       float depthShade = mix(1.0, uDepthMin, t);          
       vec3 finalColor = lit * depthShade;
-
+      
       fragColor = vec4(finalColor, 1.0);
     }
   </script>
 
-  <!-- your math / primitive libraries -->
+
   <script src="{{ url_for('static', filename='transformations.js') }}"></script>
   <script src="{{ url_for('static', filename='primitives.js') }}"></script>
 
@@ -374,6 +377,75 @@
       }
       return uvs;
     }
+
+    // Setting up video texture
+    function createVideoFeed(gl, videoId) {
+      const video = document.getElementById(videoId);
+      const tex   = gl.createTexture();
+
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        new Uint8Array([0, 0, 0, 255])
+      );
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+      video.play().catch(() => {});
+
+      return { video, texture: tex };
+    }
+
+    const videoFeeds = [
+      createVideoFeed(gl, "video1"),
+      createVideoFeed(gl, "video2")
+    ];
+
+
+    // Setting up UVs for the block, manualy adding 
+    function makeTexturedBlock(w=2,h=2,d=2){
+      const prim=buildBlock(w,h,d);
+      const uvs=new Float32Array([
+        // +Z
+        0,0, 1,0, 1,1, 0,1,
+        // -Z
+        1,0, 0,0, 0,1, 1,1,
+        // +Y
+        0,0, 1,0, 1,1, 0,1,
+        // -Y
+        0,1, 1,1, 1,0, 0,0,
+        // +X
+        0,0, 0,1, 1,1, 1,0,
+        // -X
+        0,0, 1,0, 1,1, 0,1,
+      ]);
+      return{positions: prim.positions, indices:prim.indices, uvs};
+    }
+
+    function createGLMeshVid(mesh){
+
+      const pos=gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, pos);
+                gl.bufferData(gl.ARRAY_BUFFER, mesh.positions, gl.STATIC_DRAW);
+
+      const uv=gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER,  uv);
+      const uvs=mesh.uvs||new Float32Array(mesh.positions.length/3*2);
+                gl.bufferData(gl.ARRAY_BUFFER,  uvs,  gl.STATIC_DRAW);
+      const idx=gl.createBuffer();
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,  idx);
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,  mesh.indices, gl.STATIC_DRAW);
+
+      return{pos, uv, idx,  count:mesh.indices.length};
+    }
+    const cubeGL=createGLMeshVid(makeTexturedBlock(1,1,1));
 
     function initShaderProgram() {
       try {
@@ -712,6 +784,8 @@
         clawPose.rot = [0, 0, 0];
         armRig.midOffset = 0;
         armRig.smallOffset = 0;
+
+        armRig.lowAngle = 0;
       });
 
       btnSpin.addEventListener('click', () => {
@@ -1150,15 +1224,76 @@
         gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
     }
 
+    function drawVideoCube(allRotation, modelViewMatrix, elapsed, offset, scale, texture) {
+      gl.useProgram(program);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, cubeGL.pos);
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+      if (colorLoc !== -1) {
+        gl.disableVertexAttribArray(colorLoc);
+        gl.vertexAttrib3f(colorLoc, 1.0, 1.0, 1.0);
+      }
+
+      gl.disableVertexAttribArray(normalLoc);
+      gl.vertexAttrib3f(normalLoc, 0.0, 1.0, 0.0);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, cubeGL.uv);
+      gl.enableVertexAttribArray(aUVLoc);
+      gl.vertexAttribPointer(aUVLoc, 2, gl.FLOAT, false, 0, 0);
+
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeGL.idx);
+
+      if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 1);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+
+      let Mcube = mat4Identity();
+      Mcube = mat4Translate(Mcube, offset);
+      Mcube = mat4Scale(Mcube, scale);      
+
+      const Mscene = multiplyMat4(allRotation, Mcube);
+      const MV     = multiplyMat4(modelViewMatrix, Mscene);
+      const N      = normalMatrixFromMV(MV);
+
+      gl.uniformMatrix4fv(uMTM, false, Mscene);
+      gl.uniformMatrix3fv(uNormalMatrix, false, N);
+
+      gl.drawElements(gl.TRIANGLES, cubeGL.count, gl.UNSIGNED_SHORT, 0);
+
+      gl.enableVertexAttribArray(normalLoc);
+    }
 
 
-
+    
     function render() {
       gl.useProgram(program);
 
       gl.enable(gl.DEPTH_TEST);
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      // Update each video texture
+      for (const feed of videoFeeds) {
+        const vid = feed.video;
+        if (
+          vid.readyState >= vid.HAVE_CURRENT_DATA &&
+          !vid.paused &&
+          !vid.ended
+        ) {
+          gl.bindTexture(gl.TEXTURE_2D, feed.texture);
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            vid
+          );
+        }
+      }
+
 
       let cx = Math.cos(cubeRotY), sx = Math.sin(cubeRotY);
       let cy = Math.cos(cubeRotX), sy = Math.sin(cubeRotX);
@@ -1247,6 +1382,15 @@
 
       drawBlock([0, 0, 0], [20, 10, 20]);  // bottom
       drawBlock([0, 50, 0], [20, 5, 20]);  // top
+
+
+
+      // drawBlock([0, -5, 0], [150, 3, 150]);
+
+      drawVideoCube(allRotation, modelViewMatrix, elapsed, [0, -5, 0], [150, 3, 150], videoFeeds[0].texture);
+
+
+
 
       // --- random spheres (untextured) ---
       let r = 0;
@@ -1355,7 +1499,7 @@
       //    drop--   open claw above (lower then middle) dropping prize (if any)
 
       if(armDrop.phase == 'open'){
-        armRig.lowAngle = Math.min(armRig.lowAngle + armDrop.speed * dt, 50);
+        armRig.lowAngle = Math.min(armRig.lowAngle + (armDrop.speed * dt + 2), 50);
         if (armRig.lowAngle >= 50) armDrop.phase = 'mid';
 
       } else if (armDrop.phase === 'mid') {
@@ -1366,7 +1510,12 @@
       } else if (armDrop.phase === 'small') {
 
         armRig.smallOffset = Math.min(armRig.smallOffset + armDrop.speed * dt, armRig.smallMax);
-        if (armRig.smallOffset >= armRig.smallMax) armDrop.phase = 'smallR';
+        if (armRig.smallOffset >= armRig.smallMax) armDrop.phase = 'close';
+
+      } else if(armDrop.phase === 'close'){
+
+        armRig.lowAngle = Math.max(armRig.lowAngle - (armDrop.speed * dt + 2), 0);
+        if (armRig.lowAngle <= 0) armDrop.phase = 'smallR';
 
       } else if(armDrop.phase === 'smallR'){
 
@@ -1400,7 +1549,7 @@
 
       } else if (armDrop.phase === 'drop'){
 
-        armRig.lowAngle = Math.min(armRig.lowAngle + armDrop.speed * dt, 50);
+        armRig.lowAngle = Math.min(armRig.lowAngle + (armDrop.speed * dt + 2), 50);
         if (armRig.lowAngle >= 50) armDrop.phase = 'done';
 
       }
