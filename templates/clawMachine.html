@@ -19,7 +19,7 @@
         overflow: hidden;
     }
 
-    body::before {
+    /* body::before {
         content: "";
         position: absolute;
         inset: -20%;
@@ -27,9 +27,9 @@
         animation: neonPulse 6s ease-in-out infinite;
         z-index: -1;
         pointer-events: none;
-    }
+    } */
 
-    @keyframes neonPulse {
+    /* @keyframes neonPulse {
         0% {
             opacity: 0.3;
             transform: scale(1);
@@ -42,7 +42,7 @@
             opacity: 0.3;
             transform: scale(1);
         }
-    }
+    } */
 
     h1 {
         font-size: 20px;
@@ -143,7 +143,7 @@
       grid-row: 3;
     }
 
-    #video{
+    .video{
         position:fixed;
         left:0;
         top:0;
@@ -156,7 +156,7 @@
 
 </head>
 <body>
-    <h1>🕹️👻 Claw Machine: Light Up Your Luck 👻🕹️</h1>
+    <h1>🕹️🧸 Claw Machine: Light Up Your Luck 🧸🕹️</h1>
     <canvas id="glcanvas" width="640" height="480"></canvas>
     <div style="display: flex; flex-direction: column; gap: 10px; visibility:hidden; height:0; overflow:hidden;">
         <div>
@@ -196,7 +196,9 @@
         </div>
     </div>
 
-    <video id="video" src="{{ video_url }}?v={{ cache_bust }}" autoplay loop muted playsinline></video>
+    <video id="video1" class="video" src="{{ video_url_1 }}?v={{ cache_bust }}" autoplay loop muted playsinline></video>
+    <video id="video2" class="video" src="{{ video_url_2 }}?v={{ cache_bust }}" autoplay loop muted playsinline></video>
+
 
     <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
     in vec3 aPosition;
@@ -226,7 +228,6 @@
     }
   </script>
 
-  <!-- Fragment Shader (WebGL2) -->
   <script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
     precision mediump float;
 
@@ -246,8 +247,13 @@
 
     uniform sampler2D uTex;
     uniform bool      uUseTexture;
+    
+    uniform vec3  uEmissiveColor;
+    uniform float uEmissiveStrength;
 
     out vec4 fragColor;
+
+
 
     void main() {
       vec3 N = normalize(vNormalVS);
@@ -268,14 +274,15 @@
       float d = length(vPosVS);                           
       float t = clamp((d - uDepthNear) / (uDepthFar - uDepthNear), 0.0, 1.0);
       t = smoothstep(0.0, 1.0, t);                       
-      float depthShade = mix(1.0, uDepthMin, t);          
-      vec3 finalColor = lit * depthShade;
-
+      float depthShade = mix(1.0, uDepthMin, t); 
+      vec3 emissive = uEmissiveColor * uEmissiveStrength;         
+      vec3 finalColor = lit * depthShade + emissive;
+      
       fragColor = vec4(finalColor, 1.0);
     }
   </script>
 
-  <!-- your math / primitive libraries -->
+
   <script src="{{ url_for('static', filename='transformations.js') }}"></script>
   <script src="{{ url_for('static', filename='primitives.js') }}"></script>
 
@@ -375,6 +382,75 @@
       return uvs;
     }
 
+    // Setting up video texture
+    function createVideoFeed(gl, videoId) {
+      const video = document.getElementById(videoId);
+      const tex   = gl.createTexture();
+
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        new Uint8Array([0, 0, 0, 255])
+      );
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+      video.play().catch(() => {});
+
+      return { video, texture: tex };
+    }
+
+    const videoFeeds = [
+      createVideoFeed(gl, "video1"),
+      createVideoFeed(gl, "video2")
+    ];
+
+
+    // Setting up UVs for the block, manualy adding 
+    function makeTexturedBlock(w=2,h=2,d=2){
+      const prim=buildBlock(w,h,d);
+      const uvs=new Float32Array([
+        // +Z
+        0,0, 1,0, 1,1, 0,1,
+        // -Z
+        1,0, 0,0, 0,1, 1,1,
+        // +Y
+        0,0, 1,0, 1,1, 0,1,
+        // -Y
+        0,1, 1,1, 1,0, 0,0,
+        // +X
+        0,0, 0,1, 1,1, 1,0,
+        // -X
+        0,0, 1,0, 1,1, 0,1,
+      ]);
+      return{positions: prim.positions, indices:prim.indices, uvs};
+    }
+
+    function createGLMeshVid(mesh){
+
+      const pos=gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, pos);
+                gl.bufferData(gl.ARRAY_BUFFER, mesh.positions, gl.STATIC_DRAW);
+
+      const uv=gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER,  uv);
+      const uvs=mesh.uvs||new Float32Array(mesh.positions.length/3*2);
+                gl.bufferData(gl.ARRAY_BUFFER,  uvs,  gl.STATIC_DRAW);
+      const idx=gl.createBuffer();
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,  idx);
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,  mesh.indices, gl.STATIC_DRAW);
+
+      return{pos, uv, idx,  count:mesh.indices.length};
+    }
+    const cubeGL=createGLMeshVid(makeTexturedBlock(1,1,1));
+
     function initShaderProgram() {
       try {
         program = createProgram(
@@ -389,7 +465,7 @@
         normalLoc = gl.getAttribLocation(program, "aNormal");
         aUVLoc = gl.getAttribLocation(program, "aUV");
 
-        timeLoc = gl.getUniformLocation(program, "uTime"); // may be null
+        timeLoc = gl.getUniformLocation(program, "uTime"); 
 
         uMVM = gl.getUniformLocation(program, "uModelViewMatrix");
         uPM = gl.getUniformLocation(program, "uProjectionMatrix");
@@ -409,7 +485,7 @@
         uUseTextureLoc = gl.getUniformLocation(program, "uUseTexture");
 
         gl.useProgram(program);
-        gl.uniform3f(uLightDirVS, 0.3, -0.9, 0.4);
+        gl.uniform3f(uLightDirVS, -0.9, -0.2, -0.3);
         gl.uniform1f(uAmbient, 0.85);
         gl.uniform1f(uSpecPower, 42.0);
         gl.uniform1f(uSpecStrength, 0.65);
@@ -420,6 +496,14 @@
 
         if (uTexLoc) gl.uniform1i(uTexLoc, 0);
         if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+
+        uEmissiveColor    = gl.getUniformLocation(program, "uEmissiveColor");
+        uEmissiveStrength = gl.getUniformLocation(program, "uEmissiveStrength");
+
+        if (uEmissiveColor)    gl.uniform3f(uEmissiveColor, 0.0, 0.0, 0.0);
+        if (uEmissiveStrength) gl.uniform1f(uEmissiveStrength, 0.0);
+
+
 
       } catch (e) {
         console.error(e);
@@ -574,27 +658,68 @@
       return tex;
     }
 
-    const teddyFurTex = loadTexture(
+    const teddyFurTexBrown = loadTexture(
       "/static/stylized-animal-fur-unity/stylized-animal-fur_albedo.png"
     );
+    const teddyFurTexBlue = loadTexture(
+      "/static/stylized-animal-fur-unity/blueFur.png"
+    );
+    const teddyFurTexPink = loadTexture(
+      "/static/stylized-animal-fur-unity/pinkFur.png"
+    );
+    const teddyFurTexPurple = loadTexture(
+      "/static/stylized-animal-fur-unity/purpleFur.png"
+    );
+
+    const teddyFurColors = [Math.floor(Math.random() * 4), Math.floor(Math.random() * 4), Math.floor(Math.random() * 4)];
+    const possibleBearColors = [teddyFurTexBlue, teddyFurTexBrown, teddyFurTexPink, teddyFurTexPurple];
+
+    let teddyBaseLeftS = [-7, 30, -8];
+    let leftTeddyGrab = 0;
+    let teddyBaseRightS = [7, 30, -8];
+    let rightTeddyGrab = 0; 
+    let teddyBaseBL = [6, 30, 5];
+    let layingTeddyGrab = 0; 
+
+    const teddyPawPadsTex = loadTexture(
+      "/static/brown-leather-unity/brown-leather_albedo.png"
+    )
 
     // --------- Teddy rig (positions in machine space) ---------
-    const teddyParts = {
-    body: { pos:[ 0.0, -2.0, 0.0],  rot:[0,0,0],            scale:[1.5, 2.0, 1.3], morphBase:0.0 },
-    head: { pos:[ 0.0, 2.0 ,0.0],   rot:[0,0,0],            scale:[1.3,1.2,1.2],  morphBase:0.0 },
-    earL: { pos:[-1.3, 3.6, -0.4],  rot:[0,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
-    earR: { pos:[ 1.3, 3.6, -0.4],  rot:[0,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
-    snout:{ pos:[ 0.00, 1.4, 1.6], rot:[0,0,0],            scale:[0.6,0.4,0.7], morphBase:0.0 },
-    armL: { pos:[-1.90, -0.8, 0.05],  rot:[0.50, 0.3, 0.65], scale:[0.5,1.5,0.5],    morphBase:0.0 },
-    armR: { pos:[ 1.90, -0.8, 0.05],  rot:[0.50,-0.3,-0.65], scale:[0.5,1.5,0.5],    morphBase:0.0 },
-    legL: { pos:[-1.2,-4.2, 1.2],  rot:[0.0, 0, 0.4],    scale:[0.6,0.6,1.7],   morphBase:0.0 },
-    legR: { pos:[ 1.2,-4.2, 1.2], rot:[0.0, 0,-0.4],    scale:[0.6,0.6,1.7],   morphBase:0.0 },
-    pawL: { pos:[-1.2,-2.0,0.35],   rot:[0.0,0,0.6],        scale:[0.48,0.28,0.48], morphBase:0.0 },
-    pawR: { pos:[ 1.2,-2.0,0.35],   rot:[0.0,0,-0.6],       scale:[0.48,0.28,0.48], morphBase:0.0 },
-    pawLA:{ pos:[-1.65,-0.35,0.35], rot:[0.0,0,-0.8],       scale:[0.38,0.28,0.48], morphBase:0.0 },
-    pawRA:{ pos:[ 1.65,-0.35,0.35], rot:[0.0,0, 0.8],       scale:[0.38,0.28,0.48], morphBase:0.0 },
+    const teddyPartsSitting = {
+    body: { pos:[ 0.0, -2.0, 0.0],    rot:[0,0,0],            scale:[1.5, 2.0, 1.3], morphBase:0.0 },
+    head: { pos:[ 0.0, 2.0 ,0.0],     rot:[0,0,0],            scale:[1.3,1.2,1.2],  morphBase:0.0 },
+    earL: { pos:[-1.3, 3.6, -0.4],    rot:[0,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
+    earR: { pos:[ 1.3, 3.6, -0.4],    rot:[0,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
+    snout:{ pos:[ 0.00, 1.4, 1.6],    rot:[0,0,0],            scale:[0.6,0.4,0.7], morphBase:0.0 },
+    armL: { pos:[-1.90, -0.8, 0.05],  rot:[0.50, 0.3, 0.65],  scale:[0.5,1.5,0.5],    morphBase:0.0 },
+    armR: { pos:[ 1.90, -0.8, 0.05],  rot:[0.50,-0.3,-0.65],  scale:[0.5,1.5,0.5],    morphBase:0.0 },
+    legL: { pos:[-1.2,-4.2, 1.5],     rot:[0.0, 0, 0.4],      scale:[0.6,0.6,1.7],   morphBase:0.0 },
+    legR: { pos:[ 1.2,-4.2, 1.5],     rot:[0.0, 0,-0.4],      scale:[0.6,0.6,1.7],   morphBase:0.0 },
+    pawL: { pos:[-3.1, -2.7, 0.5],     rot:[0.0,0,0.5],        scale:[0.3,0.5,0.4], morphBase:0.0 },
+    pawR: { pos:[ 3.1, -2.7, 0.5],     rot:[0.0,0,-0.5],       scale:[0.3,0.5,0.4], morphBase:0.0 },
+    pawLA:{ pos:[-1.45,-3.8,3.5],   rot:[0.0,0,-0.8],       scale:[0.5,0.8,0.4], morphBase:0.0 },
+    pawRA:{ pos:[ 1.45,-3.8,3.5],   rot:[0.0,0, 0.8],       scale:[0.5,0.8,0.4], morphBase:0.0 },
     };
-    const parts = ['body','head','earL','earR','snout','armL','armR','legL','legR']//,'pawL','pawR','pawLA','pawRA'];
+
+    const teddyPartsLaying = {
+    body: { pos:[ 0.0, -3.5, -1.5],    rot:[1.5 ,0,0],            scale:[1.5, 2.0, 1.3], morphBase:0.0 },
+    head: { pos:[ 0.0, -3.5 ,-5.5],     rot:[1.5,0,0],            scale:[1.3,1.2,1.2],  morphBase:0.0 },
+    earL: { pos:[-1.3, -3.6, -7.2],    rot:[1.5,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
+    earR: { pos:[ 1.3, -3.6, -7.2],    rot:[1.5,0,0],            scale:[0.5,0.5,0.22], morphBase:0.0 },
+    snout:{ pos:[ 0.00, -1.8, -5.4],    rot:[1.5,0,0],            scale:[0.6,0.4,0.7], morphBase:0.0 },
+    armL: { pos:[-1.90, -3.5, -2.5],  rot:[1.6, 0.3, 0.65],  scale:[0.5,1.5,0.5],    morphBase:0.0 },
+    armR: { pos:[ 1.90, -3.5, -2.5],  rot:[1.6,-0.3,-0.65],  scale:[0.5,1.5,0.5],    morphBase:0.0 },
+    legL: { pos:[-1.2,-4.2, 1.5],     rot:[0.0, 0, 0.4],      scale:[0.6,0.6,1.7],   morphBase:0.0 },
+    legR: { pos:[ 1.2,-4.2, 1.5],     rot:[0.0, 0,-0.4],      scale:[0.6,0.6,1.7],   morphBase:0.0 },
+    pawL: { pos:[-3.1, -4.0, -0.5],     rot:[1.5,0,0.5],        scale:[0.3,0.5,0.4], morphBase:0.0 },
+    pawR: { pos:[ 3.1, -4.0, -0.5],     rot:[1.5,0,-0.5],       scale:[0.3,0.5,0.4], morphBase:0.0 },
+    pawLA:{ pos:[-1.45,-3.8,3.5],   rot:[0.0,0,-0.8],       scale:[0.5,0.8,0.4], morphBase:0.0 },
+    pawRA:{ pos:[ 1.45,-3.8,3.5],   rot:[0.0,0, 0.8],       scale:[0.5,0.8,0.4], morphBase:0.0 },
+    };
+
+    const parts = ['body','head','earL','earR','snout','armL','armR','legL','legR','pawL','pawR','pawLA','pawRA'];
+
 
     // --------- Input & camera ---------
     let mouseDown = false, lastX, lastY, cubeRotX = 0, cubeRotY = 0;
@@ -637,11 +762,15 @@
       smallOffset: 0,
       midMax: 4.0,
       smallMax: 4.0,
+      midMin: 0,
+      smallMin: 0,
+      lowAngle: 0,
+      midAngle: 0
     };
 
     const armDrop = {
       phase: 'idle',
-      speed: 2.5
+      speed: 4.5
     };
 
     const CLAW_BOUNDS = {
@@ -654,6 +783,25 @@
       clawPose.pos[1] = Math.max(CLAW_BOUNDS.min.y, Math.min(CLAW_BOUNDS.max.y, clawPose.pos[1]));
       clawPose.pos[2] = Math.max(CLAW_BOUNDS.min.z, Math.min(CLAW_BOUNDS.max.z, clawPose.pos[2]));
     }
+
+
+    // drawNeonRope([-10.1, 50, 10.1], [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+    // drawNeonRope([-10.1, 50, -10.1], [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+    // drawNeonRope([10.1, 50, -10.1], [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+    // drawNeonRope([10.1, 50, 10.1], [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+
+    const lightPos = {
+      first: [-10.1, 50, 10.1],
+      second: [-10.1, 50, -10.1],
+      third: [10.1, 50, -10.1],
+      forth: [10.1, 50, 10.1]
+    }
+
+    const lightVals = {
+      speed: 28,
+      phase: 'fall'
+    }
+
 
     window.addEventListener('load', () => {
 
@@ -677,6 +825,11 @@
         clawPose.rot = [0, 0, 0];
         armRig.midOffset = 0;
         armRig.smallOffset = 0;
+
+        armRig.lowAngle = 0;
+
+        teddyBaseLeftS = [-7, 30, -8];
+        teddyBaseRightS = [7, 30, -8];
       });
 
       btnSpin.addEventListener('click', () => {
@@ -688,7 +841,7 @@
         if (armDrop.phase === 'idle' || armDrop.phase === 'done') {
           armRig.midOffset = 0;
           armRig.smallOffset = 0;
-          armDrop.phase = 'mid';
+          armDrop.phase = 'open';
         }
       });
 
@@ -765,48 +918,139 @@
         };
       }
 
-      const lowClaw = node('group', null, [
-        node('cone', TRS({
-          translate: [-5.0, 34.7, 6.5],
-          rotate: [deg(-50), deg(0), deg(0)],
-          scale: [0.3, 3.0, 0.3]
-        })),
+      function TRS_ClawOpen({  pivot = [0, 0, 0], axis = 'x', getAngle = () => 0 }) {
+        return () => {
+          let M = mat4Identity();
+          const a = getAngle();
+          if (a !== 0) {
+            M = mat4Translate(M, pivot);
 
-        node('cone', TRS_YawAbout({
-          offset: [-6.7, 34.7, 4.3],
-          rotXYZ: [deg(-50), deg(120), deg(0)],
-          scale: [0.3, 3.0, 0.3],
-          pivotY: [-6.7, 41.0, 4.3]
-        })),
+            const rad = deg(a);
+            if (axis === 'x')      M = mat4RotateX(M, rad);
+            else if (axis === 'y') M = mat4RotateY(M, rad);
+            else if (axis === 'z') M = mat4RotateZ(M, rad);
 
-        node('cone', TRS_YawAbout({
-          offset: [-3.5, 34.7, 4.3],
-          rotXYZ: [deg(-50), deg(240), deg(0)],
-          scale: [0.3, 3.0, 0.3],
-          pivotY: [-3.5, 41.0, 4.3]
-        })),
-      ]);
+            M = mat4Translate(M, [-pivot[0], -pivot[1], -pivot[2]]);
+          }
+          return M;
+        };
+      }
+
+      function TRS_ClawOpenSide({pivot = [0, 0, 0], getAngle = () => 0, signX = 1, signZ = 1
+      }) {
+        return () => {
+          let M = mat4Identity();
+          const a = getAngle();
+          if (a !== 0) {
+            const ax = deg(a * signX);
+            const az = deg(a * signZ); 
+
+            M = mat4Translate(M, pivot);
+
+            M = mat4RotateZ(M, az);
+            M = mat4RotateX(M, ax);
+
+            M = mat4Translate(M, [-pivot[0], -pivot[1], -pivot[2]]);
+          }
+          return M;
+        };
+      }
+
+      const lowClawCent = node('group',
+        TRS_ClawOpen({
+            pivot: [-5.0, 36.1, 7.3],
+            axis: 'x',
+            getAngle: () => armRig.lowAngle
+          }),
+          [
+            node('cone', TRS({
+              translate: [-5.0, 34.7, 6.5],
+              rotate: [deg(-50), deg(0), deg(0)],
+              scale: [0.3, 3.0, 0.3]
+            }))
+        ]);
+
+      const lowClawLeft = node('group',
+        TRS_ClawOpenSide({
+            pivot: [-7.2, 36.1, 4.4],
+            getAngle: () => armRig.lowAngle,
+            signX: -0.6, 
+            signZ: 0.9
+          }),
+          [
+            node('cone', TRS_YawAbout({
+              offset: [-6.7, 34.7, 4.3],
+              rotXYZ: [deg(-50), deg(120), deg(0)],
+              scale: [0.3, 3.0, 0.3],
+              pivotY: [-6.7, 41.0, 4.3]
+            }))
+        ]);
+
+      const lowClawRight = node('group',
+        TRS_ClawOpenSide({
+            pivot: [-3.0, 36.1, 4.4],
+            getAngle: () => armRig.lowAngle,
+            signX: -0.6,
+            signZ: -0.9
+          }),
+          [
+            node('cone', TRS_YawAbout({
+              offset: [-3.5, 34.7, 4.3],
+              rotXYZ: [deg(-50), deg(240), deg(0)],
+              scale: [0.3, 3.0, 0.3],
+              pivotY: [-3.5, 41.0, 4.3]
+            }))
+        ]);
+
+      const midClawCent = node('group',
+        TRS_ClawOpen({
+            offset: [0, 0, 0],
+            rotXYZ: [0, 0, 0],
+            scale: [1, 1, 1],
+            getAngle: () => armRig.midAngle
+          }),
+          [
+            node('cyl', TRS({
+              translate: [-5.0, 37.0, 7.6],
+              rotate: [deg(10), deg(0), deg(0)],
+              scale: [0.3, 3.0, 0.3]
+            })), lowClawCent
+        ]);
+
+      const midClawLeft = node('group',
+        TRS_ClawOpen({
+            offset: [0, 0, 0],
+            rotXYZ: [0, 0, 0],
+            scale: [1, 1, 1],
+            getAngle: () => armRig.midAngle
+          }),
+          [
+            node('cyl', TRS_YawAbout({
+              offset: [-7.4, 37.0, 3.9],
+              rotXYZ: [deg(10), deg(120), deg(0)],
+              scale: [0.3, 3.0, 0.3],
+              pivotY: [-7.4, 41.0, 3.9]
+            })), lowClawLeft
+        ]);
+
+      const midClawRight = node('group',
+        TRS_ClawOpen({
+            offset: [0, 0, 0],
+            rotXYZ: [0, 0, 0],
+            scale: [1, 1, 1],
+            getAngle: () => armRig.midAngle
+          }),
+          [
+            node('cyl', TRS_YawAbout({
+              offset: [-2.9, 37.0, 3.9],
+              rotXYZ: [deg(10), deg(240), deg(0)],
+              scale: [0.3, 3.0, 0.3],
+              pivotY: [-2.9, 41.0, 3.9]
+            })), lowClawRight
+        ]);
 
       const midClaw = node('group', null, [
-        node('cyl', TRS({
-          translate: [-5.0, 37.0, 7.6],
-          rotate: [deg(10), deg(0), deg(0)],
-          scale: [0.3, 3.0, 0.3]
-        })),
-
-        node('cyl', TRS_YawAbout({
-          offset: [-7.4, 37.0, 3.9],
-          rotXYZ: [deg(10), deg(120), deg(0)],
-          scale: [0.3, 3.0, 0.3],
-          pivotY: [-7.4, 41.0, 3.9]
-        })),
-
-        node('cyl', TRS_YawAbout({
-          offset: [-2.9, 37.0, 3.9],
-          rotXYZ: [deg(10), deg(240), deg(0)],
-          scale: [0.3, 3.0, 0.3],
-          pivotY: [-2.9, 41.0, 3.9]
-        })),
+        midClawCent, midClawLeft, midClawRight
       ]);
 
       const upClaw = node('group', null, [
@@ -852,7 +1096,7 @@
             rotate: [0, 0, 0],
             scale: [0.6, 5.0, 0.6]
           })),
-          upClaw, midClaw, lowClaw
+          upClaw, midClaw
         ]
       );
 
@@ -968,7 +1212,7 @@
     const clawRoot = buildClawFullTree();
 
 
-    function drawTexturedTeddy(allRotation, modelViewMatrix, teddyBase, parts, teddyParts) {
+    function drawTexturedTeddy(allRotation, modelViewMatrix, teddyBase, parts, teddyParts, wrapper) {
         const s = sphereSets[0];  // first sphere set (has UVs)
 
         // Bind shared sphere buffers once
@@ -992,7 +1236,7 @@
 
         if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 1);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, teddyFurTex);
+        gl.bindTexture(gl.TEXTURE_2D, wrapper);
 
         for (const name of parts) {
             const p = teddyParts[name];
@@ -1009,7 +1253,6 @@
             Mlocal = mat4RotateZ(Mlocal, p.rot[2]);
             Mlocal = mat4Scale(Mlocal, p.scale);
 
-            // ✅ make teddy part live in the same rotating “machine space”
             const M  = multiplyMat4(allRotation, Mlocal);
             const MV = multiplyMat4(modelViewMatrix, M);
             const N  = normalMatrixFromMV(MV);
@@ -1025,15 +1268,77 @@
         gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
     }
 
+    function drawVideoCube(allRotation, modelViewMatrix, elapsed, offset, scale, texture) {
+      gl.useProgram(program);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, cubeGL.pos);
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+      if (colorLoc !== -1) {
+        gl.disableVertexAttribArray(colorLoc);
+        gl.vertexAttrib3f(colorLoc, 1.0, 1.0, 1.0);
+      }
+
+      gl.disableVertexAttribArray(normalLoc);
+      gl.vertexAttrib3f(normalLoc, 0.0, 1.0, 0.0);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, cubeGL.uv);
+      gl.enableVertexAttribArray(aUVLoc);
+      gl.vertexAttribPointer(aUVLoc, 2, gl.FLOAT, false, 0, 0);
+
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeGL.idx);
+
+      if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 1);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+
+      let Mcube = mat4Identity();
+      Mcube = mat4Translate(Mcube, offset);
+      Mcube = mat4Scale(Mcube, scale);      
+
+      const Mscene = multiplyMat4(allRotation, Mcube);
+      const MV     = multiplyMat4(modelViewMatrix, Mscene);
+      const N      = normalMatrixFromMV(MV);
+
+      gl.uniformMatrix4fv(uMTM, false, Mscene);
+      gl.uniformMatrix3fv(uNormalMatrix, false, N);
+
+      gl.drawElements(gl.TRIANGLES, cubeGL.count, gl.UNSIGNED_SHORT, 0);
+
+      gl.enableVertexAttribArray(normalLoc);
+    }
 
 
 
+    
     function render() {
       gl.useProgram(program);
 
       gl.enable(gl.DEPTH_TEST);
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      // Update each video texture
+      for (const feed of videoFeeds) {
+        const vid = feed.video;
+        if (
+          vid.readyState >= vid.HAVE_CURRENT_DATA &&
+          !vid.paused &&
+          !vid.ended
+        ) {
+          gl.bindTexture(gl.TEXTURE_2D, feed.texture);
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            vid
+          );
+        }
+      }
+
 
       let cx = Math.cos(cubeRotY), sx = Math.sin(cubeRotY);
       let cy = Math.cos(cubeRotX), sy = Math.sin(cubeRotX);
@@ -1107,21 +1412,101 @@
         gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
       }
 
+      function drawNeonRope(offset, scale, color) {
+        const I  = mat4Identity();
+        const Tm = mat4Translate(I, offset);
+        const Sm = mat4Scale(I, scale);
+
+        const M  = multiplyMat4(allRotation, multiplyMat4(Tm, Sm));
+        const MV = multiplyMat4(modelViewMatrix, M);
+        const N  = normalMatrixFromMV(MV);
+
+        gl.uniformMatrix4fv(uMTM, false, M);
+        gl.uniformMatrix3fv(uNormalMatrix, false, N);
+
+        if (colorLoc !== -1) {
+          gl.disableVertexAttribArray(colorLoc);
+          gl.vertexAttrib3f(colorLoc, color[0], color[1], color[2]);
+        }
+
+        if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+        gl.disableVertexAttribArray(aUVLoc);
+        gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
+
+        if (uEmissiveColor)    gl.uniform3f(uEmissiveColor, color[0], color[1], color[2]);
+        if (uEmissiveStrength) gl.uniform1f(uEmissiveStrength, 2.0);
+
+        gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
+
+        if (uEmissiveColor)    gl.uniform3f(uEmissiveColor, 0.0, 0.0, 0.0);
+        if (uEmissiveStrength) gl.uniform1f(uEmissiveStrength, 0.0);
+
+        if (colorLoc !== -1) {
+          gl.enableVertexAttribArray(colorLoc);
+          gl.bindBuffer(gl.ARRAY_BUFFER, cbo);
+          gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+        }
+      }
+
       // machine walls / top / bottom
       drawBlock([-5, 10, -5], [10, 20, 10]);
       drawBlock([5, 10, -5], [10, 20, 10]);
       drawBlock([5, 10, 5], [10, 20, 10]);
       drawBlock([-9.5, 10, 5], [1, 20, 10]);
 
-      drawBlock([-9.5, 24.5, 5], [1, 10, 10]);
-      drawBlock([0.5, 24.5, 5], [1, 10, 10]);
-      drawBlock([-4.5, 24.5, -0.5], [11, 10, 1]);
-      drawBlock([-4.5, 24.5, 9.5], [11, 10, 1]);
+      drawBlock([-9.5, 22.5, 5], [1, 5, 10]);
+      drawBlock([0.5, 22.5, 5], [1, 5, 10]);
+      drawBlock([-4.5, 22.5, -0.5], [11, 5, 1]);
+      drawBlock([-4.5, 22.5, 9.5], [11, 5, 1]);
 
       drawBlock([-4.5, 17.5, 9.5], [10, 5, 1]);
 
       drawBlock([0, 0, 0], [20, 10, 20]);  // bottom
       drawBlock([0, 50, 0], [20, 5, 20]);  // top
+
+
+      // drawing neon rope light elements 
+      drawNeonRope([-10, 24, -10], [0.5, 57, 0.5], [0.9, 0.0, 1.0]);
+
+      drawNeonRope([10, 24, -10], [0.5, 57, 0.5], [0.0, 1.0, 1.0]);
+
+      drawNeonRope([10, 24, 10], [0.5, 57, 0.5], [0.9, 0.0, 1.0]);
+
+      drawNeonRope([-10, 24, 10], [0.5, 57, 0.5], [0.0, 1.0, 1.0]);
+
+      // Moving lighting
+      drawNeonRope(lightPos.first, [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+      drawNeonRope(lightPos.second, [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+      drawNeonRope(lightPos.third, [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+      drawNeonRope(lightPos.forth, [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+
+      if (lightVals.phase === 'fall'){
+        lightPos.first[1] = Math.max(lightPos.first[1] - lightVals.speed * dt, 0);
+        lightPos.second[1] = Math.max(lightPos.second[1] - lightVals.speed * dt, 0);
+        lightPos.third[1] = Math.max(lightPos.third[1] - lightVals.speed * dt, 0);
+        lightPos.forth[1] = Math.max(lightPos.forth[1] - lightVals.speed * dt, 0);
+
+        if(lightPos.first[1] <= 0) lightVals.phase = 'return';
+
+
+      } else if (lightVals.phase === 'return'){
+        lightPos.first = [-10.1, 50, 10.1];
+        lightPos.second = [-10.1, 50, -10.1];
+        lightPos.third = [10.1, 50, -10.1];
+        lightPos.forth = [10.1, 50, 10.1];
+
+        lightVals.phase = 'fall';
+      }
+
+
+      // Drawing floor and backgrouns wall
+
+      drawVideoCube(allRotation, modelViewMatrix, elapsed, [0, -5, 0], [200, 1, 150], videoFeeds[0].texture);
+
+      drawVideoCube(allRotation, modelViewMatrix, elapsed, [0, 45, -70], [200, 100, 1], videoFeeds[1].texture);
+
+
+
 
       // --- random spheres (untextured) ---
       let r = 0;
@@ -1207,17 +1592,145 @@
         }
       }
 
-      // --- draw textured teddy (uses fur texture) ---
-      let teddyBaseT = [7, 30, -8];
-      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseT, parts, teddyParts);
+      // --- draw textured teddy bears (uses fur textures) ---
+
+      // let teddyBasePS = [7, 30, -8];
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseLeftS, parts, teddyPartsSitting, possibleBearColors[teddyFurColors[0]]);
+
+      // let teddyBaseBL = [6, 30, 5];
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseBL, parts, teddyPartsLaying, possibleBearColors[teddyFurColors[1]]);
+
+      // let teddyBasePurS = [-7, 30, -8];
+      drawTexturedTeddy(allRotation, modelViewMatrix, teddyBaseRightS, parts, teddyPartsSitting, possibleBearColors[teddyFurColors[2]]);
 
       // --- update claw drop animation ---
-      if (armDrop.phase === 'mid') {
+
+      // Claw phases and visual
+      //    open-- open claw above (lower then middle)
+      //    mid-- drop middle section
+      //    small--  drop smallest section 
+      //    close--  close claw on object (middle then lower)
+      //    smallR-- raise smallest section
+      //    midR--   raise middle section
+      //    home--   go back to starting point 
+      //    drop--   open claw above (lower then middle) dropping prize (if any)
+
+      if(armDrop.phase == 'open'){
+        armRig.lowAngle = Math.min(armRig.lowAngle + (armDrop.speed * dt + 2), 50);
+        if (armRig.lowAngle >= 50) armDrop.phase = 'mid';
+
+      } else if (armDrop.phase === 'mid') {
+
         armRig.midOffset = Math.min(armRig.midOffset + armDrop.speed * dt, armRig.midMax);
         if (armRig.midOffset >= armRig.midMax) armDrop.phase = 'small';
+
       } else if (armDrop.phase === 'small') {
+
+        // Checking for sitting teddy intersection 
+        if (clawPose.pos[0] <= 0 && clawPose.pos[2] <= -11.5){
+          armDrop.phase = 'close';
+          // console.log(clawPose.pos[0],  clawPose.pos[2])
+          if (clawPose.pos[0] === -2 && clawPose.pos[2] === -13) leftTeddyGrab = 1;
+
+        } else if (clawPose.pos[0] >= 11 && clawPose.pos[2] <= -11.5){
+          armDrop.phase = 'close';
+          // console.log(clawPose.pos[0],  clawPose.pos[2])
+          if (clawPose.pos[0] === 12 && clawPose.pos[2] === -13) rightTeddyGrab = 1;
+        }
+
+
         armRig.smallOffset = Math.min(armRig.smallOffset + armDrop.speed * dt, armRig.smallMax);
-        if (armRig.smallOffset >= armRig.smallMax) armDrop.phase = 'done';
+        if (armRig.smallOffset >= armRig.smallMax) armDrop.phase = 'close';
+
+      } else if(armDrop.phase === 'close'){
+
+        armRig.lowAngle = Math.max(armRig.lowAngle - (armDrop.speed * dt + 2), 0);
+        if (armRig.lowAngle <= 0) armDrop.phase = 'smallR';
+
+      } else if(armDrop.phase === 'smallR'){
+
+        armRig.smallOffset = Math.max(armRig.smallOffset - armDrop.speed * dt, armRig.smallMin);
+        if (armRig.smallOffset <= armRig.smallMin) armDrop.phase = 'midR';
+
+      } else if(armDrop.phase === 'midR'){
+
+        armRig.midOffset = Math.max(armRig.midOffset - armDrop.speed * dt, armRig.midMin);
+
+        if (leftTeddyGrab === 1){
+          teddyBaseLeftS[1] = teddyBaseLeftS[1] +  armDrop.speed * dt;
+        } else if (rightTeddyGrab === 1){
+          teddyBaseRightS[1] = teddyBaseRightS[1] +  armDrop.speed * dt;
+        }
+
+        if (armRig.midOffset <= armRig.smallMin) armDrop.phase = 'homeOver';
+
+      } else if (armDrop.phase === 'homeOver'){
+
+        if (clawPose.pos[0] >= 0){
+          clawPose.pos[0] = Math.max(clawPose.pos[0] - armDrop.speed * dt, 0);
+
+          if (leftTeddyGrab === 1){
+            teddyBaseLeftS[0] = teddyBaseLeftS[0] -  armDrop.speed * dt;
+          } else if (rightTeddyGrab === 1){
+            teddyBaseRightS[0] = teddyBaseRightS[0] -  armDrop.speed * dt;
+          }
+
+          if (clawPose.pos[0] <= armRig.smallMin) armDrop.phase = 'home';
+        } else {
+          clawPose.pos[0] = Math.min(clawPose.pos[0] + armDrop.speed * dt, 0);
+
+          if (leftTeddyGrab === 1){
+            teddyBaseLeftS[0] = teddyBaseLeftS[0] +  armDrop.speed * dt;
+          } else if (rightTeddyGrab === 1){
+            teddyBaseRightS[0] = teddyBaseRightS[0] +  armDrop.speed * dt;
+          }
+
+          if (clawPose.pos[0] >= armRig.smallMin) armDrop.phase = 'home';
+        }    
+
+      } else if (armDrop.phase === 'home'){
+
+        if (clawPose.pos[2] <= 0){
+          clawPose.pos[2] = Math.min(clawPose.pos[2] + armDrop.speed * dt, 0);
+
+          if (leftTeddyGrab === 1){
+            teddyBaseLeftS[2] = teddyBaseLeftS[2] +  armDrop.speed * dt;
+          } else if (rightTeddyGrab === 1){
+            teddyBaseRightS[2] = teddyBaseRightS[2] +  armDrop.speed * dt;
+          }
+
+          if (clawPose.pos[2] >= armRig.smallMin) armDrop.phase = 'drop';
+        } else {
+          clawPose.pos[2] = Math.max(clawPose.pos[2] - armDrop.speed * dt, 0);
+
+          if (leftTeddyGrab === 1){
+            teddyBaseLeftS[2] = teddyBaseLeftS[2] -  armDrop.speed * dt;
+          } else if (rightTeddyGrab === 1){
+            teddyBaseRightS[2] = teddyBaseRightS[2] -  armDrop.speed * dt;
+          }
+
+          if (clawPose.pos[2] <= armRig.smallMin) armDrop.phase = 'drop';
+        }
+
+      } else if (armDrop.phase === 'drop'){
+
+        armRig.lowAngle = Math.min(armRig.lowAngle + (armDrop.speed * dt + 2), 50);
+        
+          if (leftTeddyGrab === 1){
+            teddyBaseLeftS[1] = Math.max(teddyBaseLeftS[1] -  (armDrop.speed * dt + 1), 10);  
+            if (teddyBaseLeftS[1] <= 10) armDrop.phase = 'done';
+          } else if (rightTeddyGrab === 1){
+            teddyBaseRightS[1] = Math.max(teddyBaseRightS[1] -  (armDrop.speed * dt + 1), 10);  
+            if (teddyBaseRightS[1] <= 10) armDrop.phase = 'done';
+          } else {
+            if (armRig.lowAngle >= 50 ) armDrop.phase = 'done';
+          }
+
+      } else if (armDrop.phase === 'done'){
+
+        armRig.lowAngle = Math.max(armRig.lowAngle - (armDrop.speed * dt + 2), 0);
+        if (armRig.lowAngle <= 0) armDrop.phase = 'idle';
+
       }
 
       // --- draw claw scene graph ---

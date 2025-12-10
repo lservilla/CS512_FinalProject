@@ -12,25 +12,25 @@ def home():
 
 @app.route("/clawMachine")
 def clawMachine():
-    video_url  = url_for("static", filename="vids/GlowGhost.mp4")
-    video_url2 = url_for("static", filename="vids/GlowGhost.mp4")  # second video for future use maybe
+    video_url_1  = url_for("static", filename="vids/Floor.mp4")
+    video_url_2 = url_for("static", filename="vids/Wall.mp4")  # second video for future use maybe
     cache_bust = str(time.time_ns())
     return render_template(
         "clawMachine.html",
-        video_url=video_url,
-        video_url2=video_url2,
+        video_url_1=video_url_1,
+        video_url_2=video_url_2,
         cache_bust=cache_bust
     )
 
 @app.route("/skeeBall")
 def skeeBall():
-    video_url  = url_for("static", filename="vids/GlowGhost.mp4")
-    video_url2 = url_for("static", filename="vids/GlowGhost.mp4")  # second video for future use maybe
+    video_url_1  = url_for("static", filename="vids/GlowGhost.mp4")
+    video_url_2 = url_for("static", filename="vids/Wall.mp4")  # second video for future use maybe
     cache_bust = str(time.time_ns())
     return render_template(
         "skeeBall.html",
-        video_url=video_url,
-        video_url2=video_url2,
+        video_url_1=video_url_1,
+        video_url_2=video_url_2,
         cache_bust=cache_bust
     )
 
