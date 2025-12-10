@@ -378,12 +378,17 @@ for(let y=0; y<maze.length; y++) {
     }
 }
 
-function canMove(x,y) {
-    const mx=Math.round(x), my=Math.round(y);
-    if(my<0||my>=maze.length||mx<0||mx>=maze[0].length) return false;
-    return maze[my][mx]!==0;
+function canMove(x, y) {
+    const mx = Math.floor(x);
+    const my = Math.floor(y);
+    if (my < 0 || mx < 0 || my >= maze.length || mx >= maze[0].length) return false;
+    return maze[my][mx] !== 0;
 }
-
+function canMoveDir(x, y, dir, speed) {
+    const dx=[speed,0,-speed,0][dir];
+    const dy=[0,speed,0,-speed][dir];
+    return canMove(x + dx, y + dy);
+}
 function draw(buf, model, color, useTexture = 0) {
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
     gl.enableVertexAttribArray(aPos);
@@ -411,11 +416,8 @@ function loop(t) {
     lastT = t;
     
     if(state.pacman.dir !== state.pacman.nextDir) {
-        const dx=[0.5,0,-0.5,0][state.pacman.nextDir];
-        const dy=[0,0.5,0,-0.5][state.pacman.nextDir];
-        if(canMove(state.pacman.x+dx, state.pacman.y+dy)) {
+        if (canMoveDir(state.pacman.x, state.pacman.y, state.pacman.nextDir, 0.2))
             state.pacman.dir = state.pacman.nextDir;
-        }
     }
     
     const spd = 3*dt;
@@ -508,6 +510,7 @@ function loop(t) {
             g.y=gny;
         }
     });
+    
     
     state.ghosts.forEach(g => {
         const dist=Math.sqrt((g.x-state.pacman.x)**2+(g.y-state.pacman.y)**2);
