@@ -19,7 +19,7 @@
         overflow: hidden;
     }
 
-    body::before {
+    /* body::before {
         content: "";
         position: absolute;
         inset: -20%;
@@ -27,9 +27,9 @@
         animation: neonPulse 6s ease-in-out infinite;
         z-index: -1;
         pointer-events: none;
-    }
+    } */
 
-    @keyframes neonPulse {
+    /* @keyframes neonPulse {
         0% {
             opacity: 0.3;
             transform: scale(1);
@@ -42,7 +42,7 @@
             opacity: 0.3;
             transform: scale(1);
         }
-    }
+    } */
 
     h1 {
         font-size: 20px;
@@ -1525,9 +1525,13 @@
         // Checking for sitting teddy intersection 
         if (clawPose.pos[0] <= 0 && clawPose.pos[2] <= -11.5){
           armDrop.phase = 'close';
+          // console.log(clawPose.pos[0],  clawPose.pos[2])
+          if (clawPose.pos[0] === -2 && clawPose.pos[2] === -13) leftTeddyGrab = 1;
 
         } else if (clawPose.pos[0] >= 11 && clawPose.pos[2] <= -11.5){
           armDrop.phase = 'close';
+          // console.log(clawPose.pos[0],  clawPose.pos[2])
+          if (clawPose.pos[0] === 12 && clawPose.pos[2] === -13) rightTeddyGrab = 1;
         }
 
 
@@ -1547,15 +1551,36 @@
       } else if(armDrop.phase === 'midR'){
 
         armRig.midOffset = Math.max(armRig.midOffset - armDrop.speed * dt, armRig.midMin);
+
+        if (leftTeddyGrab === 1){
+          teddyBaseLeftS[1] = teddyBaseLeftS[1] +  armDrop.speed * dt;
+        } else if (rightTeddyGrab === 1){
+          teddyBaseRightS[1] = teddyBaseRightS[1] +  armDrop.speed * dt;
+        }
+
         if (armRig.midOffset <= armRig.smallMin) armDrop.phase = 'homeOver';
 
       } else if (armDrop.phase === 'homeOver'){
 
         if (clawPose.pos[0] >= 0){
           clawPose.pos[0] = Math.max(clawPose.pos[0] - armDrop.speed * dt, 0);
+
+          if (leftTeddyGrab === 1){
+            teddyBaseLeftS[0] = teddyBaseLeftS[0] -  armDrop.speed * dt;
+          } else if (rightTeddyGrab === 1){
+            teddyBaseRightS[0] = teddyBaseRightS[0] -  armDrop.speed * dt;
+          }
+
           if (clawPose.pos[0] <= armRig.smallMin) armDrop.phase = 'home';
         } else {
           clawPose.pos[0] = Math.min(clawPose.pos[0] + armDrop.speed * dt, 0);
+
+          if (leftTeddyGrab === 1){
+            teddyBaseLeftS[0] = teddyBaseLeftS[0] +  armDrop.speed * dt;
+          } else if (rightTeddyGrab === 1){
+            teddyBaseRightS[0] = teddyBaseRightS[0] +  armDrop.speed * dt;
+          }
+
           if (clawPose.pos[0] >= armRig.smallMin) armDrop.phase = 'home';
         }    
 
@@ -1563,16 +1588,44 @@
 
         if (clawPose.pos[2] <= 0){
           clawPose.pos[2] = Math.min(clawPose.pos[2] + armDrop.speed * dt, 0);
+
+          if (leftTeddyGrab === 1){
+            teddyBaseLeftS[2] = teddyBaseLeftS[2] +  armDrop.speed * dt;
+          } else if (rightTeddyGrab === 1){
+            teddyBaseRightS[2] = teddyBaseRightS[2] +  armDrop.speed * dt;
+          }
+
           if (clawPose.pos[2] >= armRig.smallMin) armDrop.phase = 'drop';
         } else {
           clawPose.pos[2] = Math.max(clawPose.pos[2] - armDrop.speed * dt, 0);
+
+          if (leftTeddyGrab === 1){
+            teddyBaseLeftS[2] = teddyBaseLeftS[2] -  armDrop.speed * dt;
+          } else if (rightTeddyGrab === 1){
+            teddyBaseRightS[2] = teddyBaseRightS[2] -  armDrop.speed * dt;
+          }
+
           if (clawPose.pos[2] <= armRig.smallMin) armDrop.phase = 'drop';
         }
 
       } else if (armDrop.phase === 'drop'){
 
         armRig.lowAngle = Math.min(armRig.lowAngle + (armDrop.speed * dt + 2), 50);
-        if (armRig.lowAngle >= 50) armDrop.phase = 'done';
+        
+          if (leftTeddyGrab === 1){
+            teddyBaseLeftS[1] = Math.max(teddyBaseLeftS[1] -  (armDrop.speed * dt + 1), 10);  
+            if (teddyBaseLeftS[1] <= 10) armDrop.phase = 'done';
+          } else if (rightTeddyGrab === 1){
+            teddyBaseRightS[1] = Math.max(teddyBaseRightS[1] -  (armDrop.speed * dt + 1), 10);  
+            if (teddyBaseRightS[1] <= 10) armDrop.phase = 'done';
+          } else {
+            if (armRig.lowAngle >= 50 ) armDrop.phase = 'done';
+          }
+
+      } else if (armDrop.phase === 'done'){
+
+        armRig.lowAngle = Math.max(armRig.lowAngle - (armDrop.speed * dt + 2), 0);
+        if (armRig.lowAngle <= 0) armDrop.phase = 'idle';
 
       }
 
