@@ -258,7 +258,7 @@ bgImage.onload = function() {
     hasBackgroundTexture = true;
 };
 
-bgImage.src = "/static/backgroundImage/space.jpg";
+bgImage.src = "{{ url_for('static', filename='backgroundImage/underwater.jpg') }}";
 
 const aPos = gl.getAttribLocation(prog, 'aPosition');
 const aNorm = gl.getAttribLocation(prog, 'aNormal');
@@ -334,9 +334,15 @@ function createBuf(data) {
 
 const cubeBuf = {pos:createBuf(cube.pos), nrm:createBuf(cube.nrm), tex:createBuf(cube.tex), cnt:cube.cnt};
 const sphereBuf = {pos:createBuf(sphere.pos), nrm:createBuf(sphere.nrm), tex:createBuf(sphere.tex), cnt:sphere.cnt};
+
 const robotBuf = {pos:createBuf(robotShape.pos), nrm:createBuf(robotShape.nrm), tex:createBuf(robotShape.tex), cnt:robotShape.cnt};
 
+
 const maze = buildMaze();
+const mazeWidth = maze[0].length;
+const mazeHeight = maze.length;
+const mazeCenterX = mazeWidth / 2 - 0.5;
+const mazeCenterZ = mazeHeight / 2 - 0.5;
 //Initial state of game (pac-man, robots and pallets)
 const state = {
     pacman: {x:1, y:1, dir:0, nextDir:0},
@@ -525,48 +531,72 @@ function loop(t) {
         }
     });
     
-    gl.viewport(0,0,canvas.width,canvas.height);
-    gl.clearColor(0,0,0,1);
-    gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(bgProg);
+
+    gl.disable(gl.DEPTH_TEST); // background should not depth-test
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, bgBuf);
+    gl.enableVertexAttribArray(bgPosLoc);
+    gl.vertexAttribPointer(bgPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, bgTexture);
+    gl.uniform1i(bgTexLoc, 0);
+    gl.uniform1i(bgHasTexLoc, hasBackgroundTexture ? 1 : 0);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    gl.enable(gl.DEPTH_TEST); // restore for 3D objects
     
     gl.useProgram(prog);
     
     const proj = perspective(Math.PI/4, canvas.width/canvas.height, 0.1, 100);
     
     // Calculate camera position based on angle and distance
-    const camX = 9.5 + Math.cos(state.camera.angle) * state.camera.distance;
-    const camZ = 10 + Math.sin(state.camera.angle) * state.camera.distance;
-    const view = lookAt([camX, state.camera.height, camZ], [9.5,0,10], [0,1,0]);
+
+    const camCenter = [mazeCenterX, mazeCenterZ, 0];
+    const camX = camCenter[0] + Math.cos(state.camera.angle) * state.camera.distance;
+    const camZ = camCenter[2] + Math.sin(state.camera.angle) * state.camera.distance;
+    const view = lookAt([camX, state.camera.height, camZ], camCenter, [0,1,0]);
     
     gl.uniformMatrix4fv(uProj, false, proj);
     gl.uniformMatrix4fv(uView, false, view);
     gl.uniform3fv(uLight, [15,30,15]);
     
+
     for(let y=0;y<maze.length;y++) {
         for(let x=0;x<maze[0].length;x++) {
             if(maze[y][x]===0) {
-                const m = mult(translate(x,0.5,y), scale(1,1,1));
-                draw(cubeBuf, m, [0.1,0.1,0.8,1], 1); // Use grass texture
+                const m = mult(translate(x - mazeCenterX, 0.5, y - mazeCenterZ), scale(1,1,1));
+                draw(cubeBuf, m, [0.1,0.1,0.8,1], 1);
             }
         }
     }
     
     state.dots.forEach(d => {
-        const m = mult(translate(d.x,0.1,d.y), scale(0.15,0.15,0.15));
+        const m = mult(translate(d.x - mazeCenterX, 0.1, d.y - mazeCenterZ), scale(0.15,0.15,0.15));
         draw(sphereBuf, m, [1,0.9,0.7,1]);
     });
-    
+
     state.pellets.forEach(p => {
-        const m = mult(translate(p.x,0.2,p.y), scale(0.3,0.3,0.3));
+        const m = mult(translate(p.x - mazeCenterX, 0.2, p.y - mazeCenterZ), scale(0.3,0.3,0.3));
         draw(sphereBuf, m, [1,1,1,1]);
     });
     
-    const pm = mult(mult(translate(state.pacman.x,0.7,state.pacman.y), rotateY([0, Math.PI/2, Math.PI, -Math.PI/2][state.pacman.dir])), scale(1.2,1.2,1.2));
-    draw(robotBuf, pm, [1,0.9,0,1]);
+    const dirVecX = [1,0,-1,0][state.pacman.dir];   // world X component
+    const dirVecZ = [0,1,0,-1][state.pacman.dir];   // world Z component
+
+    const pmAngle = Math.atan2(dirVecX, dirVecZ);
+
+    const pmModel = mult(
+        mult(translate(state.pacman.x - mazeCenterX, 0.7, state.pacman.y - mazeCenterZ), rotateY(pmAngle)),
+        scale(1.2,1.2,1.2)
+    );
+    draw(robotBuf, pmModel, [1,0.9,0,1]);
     
     state.ghosts.forEach(g => {
         const col = state.frightened ? [0.1,0.1,0.8,1] : g.color;
-        const gm = mult(translate(g.x,0.7,g.y), scale(1.0,1.0,1.0));
+        const gm = mult(translate(g.x - mazeCenterX, 0.7, g.y - mazeCenterZ), scale(1.0,1.0,1.0));
         draw(sphereBuf, gm, col);
     });
     
