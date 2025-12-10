@@ -247,6 +247,9 @@
 
     uniform sampler2D uTex;
     uniform bool      uUseTexture;
+    
+    uniform vec3  uEmissiveColor;
+    uniform float uEmissiveStrength;
 
     out vec4 fragColor;
 
@@ -271,8 +274,9 @@
       float d = length(vPosVS);                           
       float t = clamp((d - uDepthNear) / (uDepthFar - uDepthNear), 0.0, 1.0);
       t = smoothstep(0.0, 1.0, t);                       
-      float depthShade = mix(1.0, uDepthMin, t);          
-      vec3 finalColor = lit * depthShade;
+      float depthShade = mix(1.0, uDepthMin, t); 
+      vec3 emissive = uEmissiveColor * uEmissiveStrength;         
+      vec3 finalColor = lit * depthShade + emissive;
       
       fragColor = vec4(finalColor, 1.0);
     }
@@ -492,6 +496,14 @@
 
         if (uTexLoc) gl.uniform1i(uTexLoc, 0);
         if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+
+        uEmissiveColor    = gl.getUniformLocation(program, "uEmissiveColor");
+        uEmissiveStrength = gl.getUniformLocation(program, "uEmissiveStrength");
+
+        if (uEmissiveColor)    gl.uniform3f(uEmissiveColor, 0.0, 0.0, 0.0);
+        if (uEmissiveStrength) gl.uniform1f(uEmissiveStrength, 0.0);
+
+
 
       } catch (e) {
         console.error(e);
@@ -772,6 +784,25 @@
       clawPose.pos[2] = Math.max(CLAW_BOUNDS.min.z, Math.min(CLAW_BOUNDS.max.z, clawPose.pos[2]));
     }
 
+
+    // drawNeonRope([-10.1, 50, 10.1], [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+    // drawNeonRope([-10.1, 50, -10.1], [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+    // drawNeonRope([10.1, 50, -10.1], [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+    // drawNeonRope([10.1, 50, 10.1], [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+
+    const lightPos = {
+      first: [-10.1, 50, 10.1],
+      second: [-10.1, 50, -10.1],
+      third: [10.1, 50, -10.1],
+      forth: [10.1, 50, 10.1]
+    }
+
+    const lightVals = {
+      speed: 28,
+      phase: 'fall'
+    }
+
+
     window.addEventListener('load', () => {
 
       const stepPos = 0.5;
@@ -796,6 +827,9 @@
         armRig.smallOffset = 0;
 
         armRig.lowAngle = 0;
+
+        teddyBaseLeftS = [-7, 30, -8];
+        teddyBaseRightS = [7, 30, -8];
       });
 
       btnSpin.addEventListener('click', () => {
@@ -1276,6 +1310,7 @@
     }
 
 
+
     
     function render() {
       gl.useProgram(program);
@@ -1377,6 +1412,42 @@
         gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
       }
 
+      function drawNeonRope(offset, scale, color) {
+        const I  = mat4Identity();
+        const Tm = mat4Translate(I, offset);
+        const Sm = mat4Scale(I, scale);
+
+        const M  = multiplyMat4(allRotation, multiplyMat4(Tm, Sm));
+        const MV = multiplyMat4(modelViewMatrix, M);
+        const N  = normalMatrixFromMV(MV);
+
+        gl.uniformMatrix4fv(uMTM, false, M);
+        gl.uniformMatrix3fv(uNormalMatrix, false, N);
+
+        if (colorLoc !== -1) {
+          gl.disableVertexAttribArray(colorLoc);
+          gl.vertexAttrib3f(colorLoc, color[0], color[1], color[2]);
+        }
+
+        if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
+        gl.disableVertexAttribArray(aUVLoc);
+        gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
+
+        if (uEmissiveColor)    gl.uniform3f(uEmissiveColor, color[0], color[1], color[2]);
+        if (uEmissiveStrength) gl.uniform1f(uEmissiveStrength, 2.0);
+
+        gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
+
+        if (uEmissiveColor)    gl.uniform3f(uEmissiveColor, 0.0, 0.0, 0.0);
+        if (uEmissiveStrength) gl.uniform1f(uEmissiveStrength, 0.0);
+
+        if (colorLoc !== -1) {
+          gl.enableVertexAttribArray(colorLoc);
+          gl.bindBuffer(gl.ARRAY_BUFFER, cbo);
+          gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+        }
+      }
+
       // machine walls / top / bottom
       drawBlock([-5, 10, -5], [10, 20, 10]);
       drawBlock([5, 10, -5], [10, 20, 10]);
@@ -1394,8 +1465,41 @@
       drawBlock([0, 50, 0], [20, 5, 20]);  // top
 
 
+      // drawing neon rope light elements 
+      drawNeonRope([-10, 24, -10], [0.5, 57, 0.5], [0.9, 0.0, 1.0]);
 
-      // drawBlock([0, -5, 0], [150, 3, 150]);
+      drawNeonRope([10, 24, -10], [0.5, 57, 0.5], [0.0, 1.0, 1.0]);
+
+      drawNeonRope([10, 24, 10], [0.5, 57, 0.5], [0.9, 0.0, 1.0]);
+
+      drawNeonRope([-10, 24, 10], [0.5, 57, 0.5], [0.0, 1.0, 1.0]);
+
+      // Moving lighting
+      drawNeonRope(lightPos.first, [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+      drawNeonRope(lightPos.second, [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+      drawNeonRope(lightPos.third, [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+      drawNeonRope(lightPos.forth, [0.5, 5, 0.5], [0.80, 0.88, 1.00]);
+
+      if (lightVals.phase === 'fall'){
+        lightPos.first[1] = Math.max(lightPos.first[1] - lightVals.speed * dt, 0);
+        lightPos.second[1] = Math.max(lightPos.second[1] - lightVals.speed * dt, 0);
+        lightPos.third[1] = Math.max(lightPos.third[1] - lightVals.speed * dt, 0);
+        lightPos.forth[1] = Math.max(lightPos.forth[1] - lightVals.speed * dt, 0);
+
+        if(lightPos.first[1] <= 0) lightVals.phase = 'return';
+
+
+      } else if (lightVals.phase === 'return'){
+        lightPos.first = [-10.1, 50, 10.1];
+        lightPos.second = [-10.1, 50, -10.1];
+        lightPos.third = [10.1, 50, -10.1];
+        lightPos.forth = [10.1, 50, 10.1];
+
+        lightVals.phase = 'fall';
+      }
+
+
+      // Drawing floor and backgrouns wall
 
       drawVideoCube(allRotation, modelViewMatrix, elapsed, [0, -5, 0], [200, 1, 150], videoFeeds[0].texture);
 
