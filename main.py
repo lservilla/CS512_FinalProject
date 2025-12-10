@@ -34,8 +34,8 @@ def skeeBall():
         cache_bust=cache_bust
     )
 
-@app.route("/newGame")
-def newGame():
+@app.route("/pacMan")
+def pacMan():
     return render_template(
         "pacMan.html"
     )
