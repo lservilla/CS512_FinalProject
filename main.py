@@ -14,11 +14,13 @@ def home():
 def clawMachine():
     video_url_1  = url_for("static", filename="vids/Floor.mp4")
     video_url_2 = url_for("static", filename="vids/Wall.mp4")  # second video for future use maybe
+    video_url_3 = url_for("static", filename="vids/Topartwork.mp4")
     cache_bust = str(time.time_ns())
     return render_template(
         "clawMachine.html",
         video_url_1=video_url_1,
         video_url_2=video_url_2,
+        video_url_3=video_url_3,
         cache_bust=cache_bust
     )
 
