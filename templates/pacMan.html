@@ -316,7 +316,30 @@
     }
   </script>
 
-  <!-- primitive /transformations -->
+  <!-- Background texture shaders -->
+  <script id="bg-vertex-shader" type="x-shader/x-vertex">#version 300 es
+    in vec2 aPosition;
+    in vec2 aTexCoord;
+    out vec2 vTexCoord;
+    
+    void main() {
+        gl_Position = vec4(aPosition, 0.0, 1.0);
+        vTexCoord = aTexCoord;
+    }
+  </script>
+
+  <script id="bg-fragment-shader" type="x-shader/x-fragment">#version 300 es
+    precision highp float;
+    in vec2 vTexCoord;
+    uniform sampler2D uTexture;
+    out vec4 fragColor;
+    
+    void main() {
+        fragColor = texture(uTexture, vTexCoord);
+    }
+  </script>
+
+  <!-- your math / primitive libraries -->
   <script src="{{ url_for('static', filename='transformations.js') }}"></script>
   <script src="{{ url_for('static', filename='primitives.js') }}"></script>
   <script>
@@ -353,7 +376,7 @@
     vertEditor.value = document.getElementById("vertex-shader").textContent;
     fragEditor.value = document.getElementById("fragment-shader").textContent;
 
-    //create program
+    //create main program
     const program = createProgram(gl,
         document.getElementById("vertex-shader").textContent,
         document.getElementById("fragment-shader").textContent
@@ -367,7 +390,17 @@
     const shapeLoc = gl.getUniformLocation(program, 'uShape');
     const mouthLoc = gl.getUniformLocation(program, 'uMouth');
 
-    //buffers
+    //create background program
+    const bgProgram = createProgram(gl,
+        document.getElementById("bg-vertex-shader").textContent,
+        document.getElementById("bg-fragment-shader").textContent
+    );
+
+    const bgPosLoc = gl.getAttribLocation(bgProgram, 'aPosition');
+    const bgTexLoc = gl.getAttribLocation(bgProgram, 'aTexCoord');
+    const bgTextureLoc = gl.getUniformLocation(bgProgram, 'uTexture');
+
+    //buffers for main game
     const posBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
@@ -380,6 +413,21 @@
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
         0, 0, 1, 0, 0, 1,
         0, 1, 1, 0, 1, 1
+    ]), gl.STATIC_DRAW);
+
+    // Create buffers for background full-screen quad
+    const bgPosBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bgPosBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1, -1,   1, -1,  -1,  1,
+        -1,  1,   1, -1,   1,  1
+    ]), gl.STATIC_DRAW);
+
+    const bgTexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bgTexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        0, 1,  1, 1,  0, 0,
+        0, 0,  1, 1,  1, 0
     ]), gl.STATIC_DRAW);
 
     const maze= buildMaze();
@@ -395,8 +443,29 @@
         lives: 3,
         frightened: false,
         frightenedTimer:0,
-        gameOver:false
+        gameOver:false,
+        bgTexture: null
     }
+
+    // Load background texture
+    const bgImage = new Image();
+    bgImage.onload = function() {
+        const bgTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, bgTexture);
+        
+        // Upload the image
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bgImage);
+        
+        // Set texture parameters
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        
+        gameState.bgTexture = bgTexture;
+    };
+    // Change this path to your background image
+    bgImage.src = "{{ url_for('static', filename='backgroundImage/space.jpg') }}";
 
     //define dots and pellets 
     for(let y=0; y<maze.length; y++){
@@ -537,11 +606,16 @@
         gameState.ghosts.forEach(function(ghost){
             ghost.lastDirChange +=dt;
 
-            //direction change
-            if(ghost.lastDirChange >0.3){
+            // Check if ghost can continue in current direction
+            const currentDx = [0.5, 0, -0.5, 0][ghost.dir];
+            const currentDy = [0, 0.5, 0, -0.5][ghost.dir];
+            const canContinue = canMove(ghost.x + currentDx, ghost.y + currentDy);
+
+            //direction change if stuck or periodically
+            if(!canContinue || ghost.lastDirChange >0.3){
                 const possibleDirs =[];
                 for(let d=0; d<4; d++){
-                    const testDx= [0.5, 0, -.5, 0][d];
+                    const testDx= [0.5, 0, -0.5, 0][d];
                     const testDy = [0, 0.5, 0, -0.5][d];
                     if(canMove(ghost.x + testDx, ghost.y+testDy)){
                         possibleDirs.push(d);
@@ -571,7 +645,10 @@
                     ghost.dir = possibleDirs[Math.floor(Math.random() * possibleDirs.length)];
     
                 }
-                ghost.lastDirChange=0;
+                
+                if(!canContinue || ghost.lastDirChange > 0.3){
+                    ghost.lastDirChange=0;
+                }
             }
 
             const ghostSpeed =gameState.frightened ? speed*0.5 : speed* ghost.speed;
@@ -618,8 +695,33 @@
         gl.viewport(0, 0, canvas.width, canvas.height);
         gl.clearColor(0, 0, 0, 1);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
+        // Draw background texture if loaded
+        if(gameState.bgTexture){
+            gl.useProgram(bgProgram);
+            
+            // Bind texture
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, gameState.bgTexture);
+            gl.uniform1i(bgTextureLoc, 0);
+            
+            // Setup position buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, bgPosBuffer);
+            gl.enableVertexAttribArray(bgPosLoc);
+            gl.vertexAttribPointer(bgPosLoc, 2, gl.FLOAT, false, 0, 0);
+            
+            // Setup texture coordinate buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, bgTexBuffer);
+            gl.enableVertexAttribArray(bgTexLoc);
+            gl.vertexAttribPointer(bgTexLoc, 2, gl.FLOAT, false, 0, 0);
+            
+            // Draw the background
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+
+        // Now draw the game elements
         gl.useProgram(program);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
