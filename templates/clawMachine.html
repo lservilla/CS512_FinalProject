@@ -389,17 +389,7 @@
       const tex   = gl.createTexture();
 
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        1,
-        1,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        new Uint8Array([0, 0, 0, 255])
-      );
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
@@ -635,13 +625,9 @@
 
     // --------- Texture loader ---------
     function loadTexture(url) {
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.RGBA,
-        1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
-        new Uint8Array([128, 128, 128, 255])
-      );
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128, 128, 128, 255]));
 
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -650,14 +636,13 @@
 
       const img = new Image();
       img.onload = function () {
-        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,
-          gl.UNSIGNED_BYTE, img);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
         gl.generateMipmap(gl.TEXTURE_2D);
       };
       img.src = url;
-      return tex;
+      return texture;
     }
 
     const teddyFurTexBrown = loadTexture(
@@ -676,9 +661,22 @@
     const teddyFurColors = [Math.floor(Math.random() * 4), Math.floor(Math.random() * 4), Math.floor(Math.random() * 4)];
     const possibleBearColors = [teddyFurTexBlue, teddyFurTexBrown, teddyFurTexPink, teddyFurTexPurple];
 
-    let teddyBaseLeftS = [-7, 30, -8];
+    const teddyPosPos = [[-7, 30, -8], [7, 30, -8], [0, 30, -8], [-7, 30, -6], [7, 30, -6], [0, 30, -6], [-7, 30, -4], [0, 30, -4]];
+    const teddyPosPosDup = [[-7, 30, -8], [7, 30, -8], [0, 30, -8], [-7, 30, -6], [7, 30, -6], [0, 30, -6], [-7, 30, -4], [0, 30, -4]];
+
+    let teddyPosValLeft = Math.floor(Math.random() * 8);
+    let teddyPosValRight = Math.floor(Math.random()*8);
+
+    while (teddyPosPos[teddyPosValLeft][0] === teddyPosPos[teddyPosValRight][0]) teddyPosValRight = Math.floor(Math.random()*8);
+
+    
+    let teddyBaseLeftS = teddyPosPos[teddyPosValLeft];
+    const teddyBaseLeftOrig = teddyPosPosDup[teddyPosValLeft];
+    console.log("Teddy one", teddyBaseLeftS); // Cheat to test claw pos 
     let leftTeddyGrab = 0;
-    let teddyBaseRightS = [7, 30, -8];
+    let teddyBaseRightS = teddyPosPos[teddyPosValRight];
+    const teddyBaseRightOrig = teddyPosPosDup[teddyPosValRight];
+    console.log("Teddy two", teddyBaseRightS); //Cheat to test claw pos
     let rightTeddyGrab = 0; 
     let teddyBaseBL = [6, 30, 5];
     let layingTeddyGrab = 0; 
@@ -838,8 +836,10 @@
 
         armRig.lowAngle = 0;
 
-        teddyBaseLeftS = [-7, 30, -8];
-        teddyBaseRightS = [7, 30, -8];
+        teddyBaseLeftS = teddyBaseLeftOrig;
+        console.log("Teddy one", teddyBaseLeftS);
+        teddyBaseRightS = teddyBaseRightOrig;
+        console.log("Teddy two", teddyBaseRightS);
       });
 
       btnSpin.addEventListener('click', () => {
@@ -1223,9 +1223,8 @@
 
 
     function drawTexturedTeddy(allRotation, modelViewMatrix, teddyBase, parts, teddyParts, wrapper) {
-        const s = sphereSets[0];  // first sphere set (has UVs)
+        const s = sphereSets[0]; 
 
-        // Bind shared sphere buffers once
         gl.bindBuffer(gl.ARRAY_BUFFER, s.sphVbo);
         gl.enableVertexAttribArray(posLoc);
         gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
@@ -1251,24 +1250,19 @@
         for (const name of parts) {
             const p = teddyParts[name];
 
-            if(name === 'eyeL') {
-              
+            if(name === 'eyeL') {  
               gl.bindTexture(gl.TEXTURE_2D, teddyEyesTex); 
-
             } else if (name === 'eyeR'){
-
               gl.bindTexture(gl.TEXTURE_2D, teddyEyesTex);
-
             } 
             
-
-            // local teddy limb transform
             let Mlocal = mat4Identity();
             Mlocal = mat4Translate(Mlocal, [
             teddyBase[0] + p.pos[0],
             teddyBase[1] + p.pos[1],
             teddyBase[2] + p.pos[2],
             ]);
+
             Mlocal = mat4RotateX(Mlocal, p.rot[0]);
             Mlocal = mat4RotateY(Mlocal, p.rot[1]);
             Mlocal = mat4RotateZ(Mlocal, p.rot[2]);
@@ -1283,7 +1277,6 @@
             gl.drawElements(gl.TRIANGLES, s.indexCount, gl.UNSIGNED_SHORT, 0);
         }
 
-        // reset to non-textured for other geometry
         if (uUseTextureLoc) gl.uniform1i(uUseTextureLoc, 0);
         gl.disableVertexAttribArray(aUVLoc);
         gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
@@ -1639,6 +1632,11 @@
       //    home--   go back to starting point 
       //    drop--   open claw above (lower then middle) dropping prize (if any)
 
+      firstTedX = teddyBaseLeftS[0];
+      secondTedX = teddyBaseRightS[0];
+      firstTedZ = teddyBaseLeftS[2];
+      secondTedZ = teddyBaseRightS[2];
+
       if(armDrop.phase == 'open'){
         armRig.lowAngle = Math.min(armRig.lowAngle + (armDrop.speed * dt + 2), 50);
         if (armRig.lowAngle >= 50) armDrop.phase = 'mid';
@@ -1651,15 +1649,15 @@
       } else if (armDrop.phase === 'small') {
 
         // Checking for sitting teddy intersection 
-        if (clawPose.pos[0] <= 0 && clawPose.pos[2] <= -11.5){
+        if (clawPose.pos[0] >= firstTedX+3 && clawPose.pos[0] <= firstTedX+7  &&  clawPose.pos[2] >= firstTedZ-6 &&  clawPose.pos[2] <= firstTedZ-3.5){
           armDrop.phase = 'close';
-          // console.log(clawPose.pos[0],  clawPose.pos[2])
-          if (clawPose.pos[0] === -2 && clawPose.pos[2] === -13) leftTeddyGrab = 1;
+          console.log(clawPose.pos[0],  clawPose.pos[2])
+          if (clawPose.pos[0] === firstTedX+5 && clawPose.pos[2] === firstTedZ-5) leftTeddyGrab = 1;
 
-        } else if (clawPose.pos[0] >= 11 && clawPose.pos[2] <= -11.5){
+        } else if (clawPose.pos[0] >= secondTedX+3 && clawPose.pos[0] <= secondTedX+7  &&  clawPose.pos[2] >= secondTedZ-6 &&  clawPose.pos[2] <= secondTedZ-3.5){
           armDrop.phase = 'close';
-          // console.log(clawPose.pos[0],  clawPose.pos[2])
-          if (clawPose.pos[0] === 12 && clawPose.pos[2] === -13) rightTeddyGrab = 1;
+          console.log(clawPose.pos[0],  clawPose.pos[2])
+          if (clawPose.pos[0] === secondTedX+5 && clawPose.pos[2] === secondTedZ-5) rightTeddyGrab = 1;
         }
 
 
