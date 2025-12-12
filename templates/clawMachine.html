@@ -1447,10 +1447,16 @@
         gl.disableVertexAttribArray(aUVLoc);
         gl.vertexAttrib2f(aUVLoc, 0.0, 0.0);
 
-        if (uEmissiveColor)    gl.uniform3f(uEmissiveColor, color[0], color[1], color[2]);
+        
+        gl.uniform1f(uAmbient, 2.0);
+
+        if (uEmissiveColor) gl.uniform3f(uEmissiveColor, color[0], color[1], color[2]);
         if (uEmissiveStrength) gl.uniform1f(uEmissiveStrength, 2.0);
 
         gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
+
+        
+          gl.uniform1f(uAmbient, 0.85);
 
         if (uEmissiveColor)    gl.uniform3f(uEmissiveColor, 0.0, 0.0, 0.0);
         if (uEmissiveStrength) gl.uniform1f(uEmissiveStrength, 0.0);
